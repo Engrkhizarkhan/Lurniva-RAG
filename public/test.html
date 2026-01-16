@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lurniva RAG - API Test Page</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 30px; }
+    h1 { color: #00d9ff; font-size: 2em; margin-bottom: 5px; }
+    .subtitle { color: #888; }
+    
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    
+    .card {
+      background: #16213e;
+      border-radius: 10px;
+      padding: 20px;
+      border: 1px solid #0f3460;
+    }
+    .card h2 {
+      color: #00d9ff;
+      font-size: 1.2em;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card h2 .method {
+      font-size: 0.7em;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .method.get { background: #28a745; }
+    .method.post { background: #007bff; }
+    .method.delete { background: #dc3545; }
+    
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9em; }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      background: #0f3460;
+      color: #fff;
+      font-size: 14px;
+    }
+    input:focus, textarea:focus { outline: none; border-color: #00d9ff; }
+    textarea { min-height: 100px; resize: vertical; }
+    
+    button {
+      background: linear-gradient(135deg, #00d9ff, #0077b6);
+      color: #fff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: transform 0.2s;
+      width: 100%;
+    }
+    button:hover { transform: translateY(-2px); }
+    button:disabled { background: #555; cursor: not-allowed; transform: none; }
+    
+    .output {
+      margin-top: 15px;
+      background: #0a0a1a;
+      border-radius: 6px;
+      padding: 15px;
+      max-height: 300px;
+      overflow: auto;
+      font-family: 'Consolas', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .output.success { border-left: 3px solid #28a745; }
+    .output.error { border-left: 3px solid #dc3545; }
+    .output.loading { border-left: 3px solid #ffc107; }
+    
+    .full-width { grid-column: 1 / -1; }
+    
+    .status-bar {
+      background: #16213e;
+      padding: 10px 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #555;
+    }
+    .status-dot.online { background: #28a745; }
+    .status-dot.offline { background: #dc3545; }
+    
+    .quick-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quick-actions button {
+      width: auto;
+      padding: 8px 15px;
+      font-size: 0.85em;
+    }
+    
+    .tooltip {
+      cursor: help;
+      color: #00d9ff;
+      font-size: 0.9em;
+    }
+    .tooltip:hover {
+      color: #fff;
+    }
+    
+    .info-box {
+      background: #0f3460;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+    .info-box h3 {
+      color: #00d9ff;
+      margin-bottom: 10px;
+      font-size: 1em;
+    }
+    .info-box ul {
+      padding-left: 20px;
+      color: #aaa;
+    }
+    .info-box li {
+      margin-bottom: 5px;
+    }
+    .info-box code {
+      background: #1a1a2e;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #00d9ff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🧪 Lurniva RAG - API Test Console</h1>
+      <p class="subtitle">Test all API endpoints</p>
+    </header>
+
+    <!-- Parameter Guide -->
+    <div class="info-box">
+      <h3>📚 Parameter Guide</h3>
+      <ul>
+        <li><strong>Chunk Size:</strong> Maximum characters per text chunk (default: 600). Larger chunks = more context per search result, but less precision. Smaller chunks = more precise matches, but less context. <code>Recommended: 400-800</code></li>
+        <li><strong>Chunk Overlap:</strong> Characters shared between consecutive chunks (default: 100). Prevents losing context at chunk boundaries. <code>Recommended: 50-150</code></li>
+        <li><strong>Top K:</strong> Maximum number of search results to return. Higher = more results (including less relevant). <code>Recommended: 3-10</code></li>
+        <li><strong>Min Score:</strong> Similarity threshold (0-1). Results below this score are filtered out. 0.3 = loose match, 0.7 = strict match. <code>Recommended: 0.3-0.5</code></li>
+      </ul>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-item">
+        <span class="status-dot" id="serverStatus"></span>
+        <span id="serverStatusText">Checking...</span>
+      </div>
+      <div class="status-item">
+        <span>Documents: <strong id="docCount">-</strong></span>
+      </div>
+      <div class="quick-actions">
+        <button onclick="checkHealth()">🔄 Refresh Status</button>
+        <button onclick="clearAllOutputs()">🧹 Clear All</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Health Check -->
+      <div class="card">
+        <h2><span class="method get">GET</span> Health Check</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/health</p>
+        <button onclick="checkHealth()">Check Health</button>
+        <div class="output" id="healthOutput"></div>
+      </div>
+
+      <!-- Stats -->
+      <div class="card">
+        <h2><span class="method get">GET</span> Collection Stats</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/stats</p>
+        <button onclick="getStats()">Get Stats</button>
+        <div class="output" id="statsOutput"></div>
+      </div>
+
+      <!-- Upload PDF -->
+      <div class="card">
+        <h2><span class="method post">POST</span> Upload PDF</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books/upload</p>
+        <div class="form-group">
+          <label>Select PDF File</label>
+          <input type="file" id="pdfFile" accept=".pdf">
+        </div>
+        <button onclick="uploadPDF()">Upload PDF</button>
+        <div class="output" id="uploadOutput"></div>
+      </div>
+
+      <!-- Ingest Text -->
+      <div class="card">
+        <h2><span class="method post">POST</span> Ingest Text</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books/text</p>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="ingestTitle" placeholder="Document Title" value="My Document">
+        </div>
+        <div class="form-group">
+          <label>Text Content</label>
+          <textarea id="ingestText" placeholder="Enter text content to ingest...">Machine learning is a subset of artificial intelligence. Deep learning uses neural networks with multiple layers. Natural language processing helps computers understand human language.</textarea>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <div class="form-group" style="flex:1">
+            <label>Chunk Size <span class="tooltip" title="The maximum number of characters per chunk. Larger chunks provide more context but may reduce search precision. Recommended: 400-800">ℹ️</span></label>
+            <input type="number" id="chunkSize" placeholder="600" value="600">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Chunk Overlap <span class="tooltip" title="Number of characters that overlap between consecutive chunks. Helps maintain context across chunk boundaries. Recommended: 50-150">ℹ️</span></label>
+            <input type="number" id="chunkOverlap" placeholder="100" value="100">
+          </div>
+        </div>
+        <button onclick="ingestText()">Ingest Text</button>
+        <div class="output" id="ingestOutput"></div>
+      </div>
+
+      <!-- Search -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> Search Documents</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/search</p>
+        <div class="form-group">
+          <label>Search Query</label>
+          <input type="text" id="searchQuery" placeholder="What is machine learning?">
+        </div>
+        <div class="form-group">
+          <label>Book ID (optional) <span class="tooltip" title="Leave empty to search all books, or enter a specific Book ID (UUID) to search within that book only">ℹ️</span></label>
+          <input type="text" id="searchBookId" placeholder="Leave empty to search all books, or paste a Book ID">
+        </div>
+        <div style="display:flex;gap:10px;">
+          <div class="form-group" style="flex:1">
+            <label>Top K Results <span class="tooltip" title="Maximum number of results to return. Higher values return more results but may include less relevant matches. Recommended: 3-10">ℹ️</span></label>
+            <input type="number" id="topK" value="5" min="1" max="20">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Min Score (0-1) <span class="tooltip" title="Minimum similarity score threshold. Results below this score are filtered out. 0.3 = loose match, 0.7 = strict match. Recommended: 0.3-0.5">ℹ️</span></label>
+            <input type="number" id="minScore" value="0.3" min="0" max="1" step="0.1">
+          </div>
+        </div>
+        <button onclick="searchDocuments()">Search</button>
+        <div class="output" id="searchOutput"></div>
+      </div>
+
+      <!-- List All Books -->
+      <div class="card">
+        <h2><span class="method get">GET</span> List All Books</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books</p>
+        <div class="form-group">
+          <label>Limit <span class="tooltip" title="Maximum number of books to return in the list">ℹ️</span></label>
+          <input type="number" id="listLimit" value="100" min="1" max="1000">
+        </div>
+        <button onclick="listBooks()">List All Books</button>
+        <div class="output" id="listOutput"></div>
+      </div>
+
+      <!-- Get Book by ID -->
+      <div class="card">
+        <h2><span class="method get">GET</span> Get Book by ID</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books/:bookId</p>
+        <div class="form-group">
+          <label>Book ID (UUID)</label>
+          <input type="text" id="getBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="includeChunks" style="width:auto;"> 
+            Include Chunks <span class="tooltip" title="If checked, returns all text chunks associated with this book">ℹ️</span>
+          </label>
+        </div>
+        <button onclick="getBookById()">Get Book</button>
+        <div class="output" id="getBookOutput"></div>
+      </div>
+
+      <!-- Delete Book -->
+      <div class="card">
+        <h2><span class="method delete">DELETE</span> Delete Book</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books/:bookId</p>
+        <div class="form-group">
+          <label>Book ID (UUID)</label>
+          <input type="text" id="deleteBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        <button onclick="deleteBook()" style="background:linear-gradient(135deg,#dc3545,#c82333)">Delete Book</button>
+        <div class="output" id="deleteOutput"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/v1';
+
+    // Helper function to display output
+    function showOutput(elementId, data, isError = false) {
+      const el = document.getElementById(elementId);
+      el.className = 'output ' + (isError ? 'error' : 'success');
+      el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
+
+    function showLoading(elementId) {
+      const el = document.getElementById(elementId);
+      el.className = 'output loading';
+      el.textContent = 'Loading...';
+    }
+
+    function clearAllOutputs() {
+      document.querySelectorAll('.output').forEach(el => {
+        el.className = 'output';
+        el.textContent = '';
+      });
+    }
+
+    // Health Check
+    async function checkHealth() {
+      showLoading('healthOutput');
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        const data = await res.json();
+        showOutput('healthOutput', data);
+        
+        const statusDot = document.getElementById('serverStatus');
+        const statusText = document.getElementById('serverStatusText');
+        if (data.success) {
+          statusDot.className = 'status-dot online';
+          statusText.textContent = 'Server Online';
+        } else {
+          statusDot.className = 'status-dot offline';
+          statusText.textContent = 'Server Error';
+        }
+      } catch (e) {
+        showOutput('healthOutput', { error: e.message }, true);
+        document.getElementById('serverStatus').className = 'status-dot offline';
+        document.getElementById('serverStatusText').textContent = 'Server Offline';
+      }
+    }
+
+    // Get Stats
+    async function getStats() {
+      showLoading('statsOutput');
+      try {
+        const res = await fetch(`${API_BASE}/stats`);
+        const data = await res.json();
+        showOutput('statsOutput', data);
+        if (data.data && data.data.points_count !== undefined) {
+          document.getElementById('docCount').textContent = data.data.points_count;
+        }
+      } catch (e) {
+        showOutput('statsOutput', { error: e.message }, true);
+      }
+    }
+
+    // Upload PDF
+    async function uploadPDF() {
+      const fileInput = document.getElementById('pdfFile');
+      if (!fileInput.files.length) {
+        showOutput('uploadOutput', { error: 'Please select a PDF file' }, true);
+        return;
+      }
+      
+      showLoading('uploadOutput');
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      
+      try {
+        const res = await fetch(`${API_BASE}/books/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        showOutput('uploadOutput', data, !data.success);
+      } catch (e) {
+        showOutput('uploadOutput', { error: e.message }, true);
+      }
+    }
+
+    // Ingest Text
+    async function ingestText() {
+      const title = document.getElementById('ingestTitle').value;
+      const text = document.getElementById('ingestText').value;
+      const chunkSize = parseInt(document.getElementById('chunkSize').value) || 600;
+      const chunkOverlap = parseInt(document.getElementById('chunkOverlap').value) || 100;
+      
+      if (!text.trim()) {
+        showOutput('ingestOutput', { error: 'Please enter some text' }, true);
+        return;
+      }
+      
+      showLoading('ingestOutput');
+      try {
+        const res = await fetch(`${API_BASE}/books/text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, title, chunk_size: chunkSize, chunk_overlap: chunkOverlap })
+        });
+        const data = await res.json();
+        showOutput('ingestOutput', data, !data.success);
+      } catch (e) {
+        showOutput('ingestOutput', { error: e.message }, true);
+      }
+    }
+
+    // Search Documents
+    async function searchDocuments() {
+      const query = document.getElementById('searchQuery').value;
+      const bookId = document.getElementById('searchBookId').value.trim();
+      const topK = parseInt(document.getElementById('topK').value) || 5;
+      const minScore = parseFloat(document.getElementById('minScore').value) || 0.3;
+      
+      if (!query.trim()) {
+        showOutput('searchOutput', { error: 'Please enter a search query' }, true);
+        return;
+      }
+      
+      showLoading('searchOutput');
+      try {
+        const payload = { query, limit: topK };
+        if (bookId) {
+          payload.book_id = bookId;
+        }
+        const res = await fetch(`${API_BASE}/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        showOutput('searchOutput', data, !data.success);
+      } catch (e) {
+        showOutput('searchOutput', { error: e.message }, true);
+      }
+    }
+
+    // List All Books
+    async function listBooks() {
+      const limit = parseInt(document.getElementById('listLimit').value) || 100;
+      showLoading('listOutput');
+      try {
+        const res = await fetch(`${API_BASE}/books?limit=${limit}`);
+        const data = await res.json();
+        showOutput('listOutput', data, !data.success);
+      } catch (e) {
+        showOutput('listOutput', { error: e.message }, true);
+      }
+    }
+
+    // Get Book by ID
+    async function getBookById() {
+      const bookId = document.getElementById('getBookId').value.trim();
+      const includeChunks = document.getElementById('includeChunks').checked;
+      
+      if (!bookId) {
+        showOutput('getBookOutput', { error: 'Please enter a Book ID' }, true);
+        return;
+      }
+      
+      showLoading('getBookOutput');
+      try {
+        const res = await fetch(`${API_BASE}/books/${bookId}?include_chunks=${includeChunks}`);
+        const data = await res.json();
+        showOutput('getBookOutput', data, !data.success);
+      } catch (e) {
+        showOutput('getBookOutput', { error: e.message }, true);
+      }
+    }
+
+    // Delete Book
+    async function deleteBook() {
+      const bookId = document.getElementById('deleteBookId').value.trim();
+      if (!bookId) {
+        showOutput('deleteOutput', { error: 'Please enter a Book ID' }, true);
+        return;
+      }
+      
+      if (!confirm(`Are you sure you want to delete book: ${bookId}?`)) return;
+      
+      showLoading('deleteOutput');
+      try {
+        const res = await fetch(`${API_BASE}/books/${bookId}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        showOutput('deleteOutput', data, !data.success);
+      } catch (e) {
+        showOutput('deleteOutput', { error: e.message }, true);
+      }
+    }
+
+    // Initial health check
+    checkHealth();
+    getStats();
+  </script>
+</body>
+</html>

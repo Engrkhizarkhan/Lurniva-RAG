@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RAG API Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    pre { background: #f4f4f4; padding: 15px; overflow-x: auto; border-radius: 5px; }
+    .success { color: green; }
+    .error { color: red; }
+    h2 { margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <h1>🧪 RAG Microservice API Test</h1>
+  
+  <div>
+    <button onclick="testHealth()">1. Test Health</button>
+    <button onclick="testIngest()">2. Ingest Sample Text</button>
+    <button onclick="testSearch()">3. Search</button>
+    <button onclick="testStats()">4. Get Stats</button>
+    <button onclick="testDelete()">5. Delete Book</button>
+    <button onclick="runAll()">Run All Tests</button>
+  </div>
+  
+  <h2>Results:</h2>
+  <pre id="output">Click a button to test...</pre>
+  
+  <script>
+    const API = 'http://localhost:3000/api/v1';
+    let currentBookId = null;
+    
+    const SAMPLE_TEXT = `
+Machine Learning Fundamentals. Machine learning is a subset of artificial intelligence that enables systems to learn from data.
+Deep Learning uses neural networks with multiple layers to process complex patterns.
+Natural Language Processing allows computers to understand human language.
+Computer Vision enables machines to interpret visual information.
+Reinforcement Learning trains agents through rewards and penalties.
+    `;
+    
+    function log(msg, isError = false) {
+      const el = document.getElementById('output');
+      el.innerHTML += `<span class="${isError ? 'error' : ''}">${msg}</span>\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+    
+    function clear() {
+      document.getElementById('output').innerHTML = '';
+    }
+    
+    async function testHealth() {
+      clear();
+      log('📋 Testing Health...');
+      try {
+        const res = await fetch(`${API}/health`);
+        const data = await res.json();
+        log(`Status: ${data.data.status}`);
+        log(`Model Loaded: ${data.data.embedding_model_loaded}`);
+        log(`Backend: ${data.data.storage_backend}`);
+        log('✅ Health check passed!', false);
+      } catch (e) {
+        log(`❌ Error: ${e.message}`, true);
+      }
+    }
+    
+    async function testIngest() {
+      clear();
+      log('📋 Ingesting sample text...');
+      try {
+        const res = await fetch(`${API}/test/ingest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: SAMPLE_TEXT, title: 'ML Test Book' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentBookId = data.data.book_id;
+          log(`Book ID: ${currentBookId}`);
+          log(`Chunks: ${data.data.chunk_count}`);
+          log(`Processing Time: ${data.data.processing_time_ms}ms`);
+          log('✅ Ingest passed!');
+        } else {
+          log(`❌ ${data.error.message}`, true);
+        }
+      } catch (e) {
+        log(`❌ Error: ${e.message}`, true);
+      }
+    }
+    
+    async function testSearch() {
+      clear();
+      log('📋 Searching for "neural networks"...');
+      try {
+        const res = await fetch(`${API}/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'neural networks deep learning', limit: 3 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          log(`Results: ${data.data.result_count}`);
+          data.data.results.forEach((r, i) => {
+            log(`\n[${i+1}] Score: ${r.score.toFixed(4)}`);
+            log(`    Text: ${r.text.substring(0, 80)}...`);
+          });
+          log('\n✅ Search passed!');
+        } else {
+          log(`❌ ${data.error.message}`, true);
+        }
+      } catch (e) {
+        log(`❌ Error: ${e.message}`, true);
+      }
+    }
+    
+    async function testStats() {
+      clear();
+      log('📋 Getting stats...');
+      try {
+        const res = await fetch(`${API}/stats`);
+        const data = await res.json();
+        if (data.success) {
+          log(`Total Vectors: ${data.data.total_vectors}`);
+          log(`Dimension: ${data.data.vector_dimension}`);
+          log(`Backend: ${data.data.storage_backend}`);
+          log('✅ Stats passed!');
+        } else {
+          log(`❌ ${data.error.message}`, true);
+        }
+      } catch (e) {
+        log(`❌ Error: ${e.message}`, true);
+      }
+    }
+    
+    async function testDelete() {
+      clear();
+      if (!currentBookId) {
+        log('⚠️ No book to delete. Run ingest first.', true);
+        return;
+      }
+      log(`📋 Deleting book ${currentBookId}...`);
+      try {
+        const res = await fetch(`${API}/books/${currentBookId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          log(`Deleted: ${data.data.deleted_chunks} chunks`);
+          log('✅ Delete passed!');
+          currentBookId = null;
+        } else {
+          log(`❌ ${data.error.message}`, true);
+        }
+      } catch (e) {
+        log(`❌ Error: ${e.message}`, true);
+      }
+    }
+    
+    async function runAll() {
+      clear();
+      log('🚀 Running all tests...\n');
+      
+      await testHealth();
+      log('\n---\n');
+      
+      await testIngest();
+      log('\n---\n');
+      
+      await testSearch();
+      log('\n---\n');
+      
+      await testStats();
+      log('\n---\n');
+      
+      await testDelete();
+      log('\n---\n');
+      
+      log('🎉 All tests completed!');
+    }
+  </script>
+</body>
+</html>

@@ -1,3 +1,12 @@
+/**
+ * Lurniva RAG Microservice API
+ * 
+ * A stateless API for PDF processing, chunking, embedding, and vector storage.
+ * Designed to be called from external dashboards/applications.
+ * 
+ * All responses include structured data suitable for storing in MySQL.
+ */
+
 import express from "express";
 import multer from "multer";
 import fs from "fs";
@@ -8,30 +17,43 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 import cors from "cors";
 import { pipeline, env } from "@xenova/transformers";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
-// Load environment variables from .env file
+// Load environment variables
 dotenv.config();
 
-// Configure Transformers.js to use local cache
+// Configure Transformers.js cache
 env.cacheDir = './.cache';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const API_VERSION = "1.0.0";
 
+// Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.static("public"));
+app.use(express.json({ limit: '50mb' }));
+
+// Serve static files from public folder
+app.use(express.static(path.join(process.cwd(), 'public')));
+
+// Serve test.html at root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'test.html'));
+});
 
 // --------------------
-// Multer config - UNLIMITED file size
+// Multer Configuration (PDF uploads)
 // --------------------
 const storage = multer.diskStorage({
   destination: "./uploads",
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+  filename: (req, file, cb) => {
+    // Temporary filename, will be renamed after book_id is generated
+    cb(null, `temp_${Date.now()}-${crypto.randomBytes(8).toString('hex')}.pdf`);
+  },
 });
+
 const upload = multer({ 
   storage,
-  // No file size limit
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/pdf') {
       cb(null, true);
@@ -41,78 +63,105 @@ const upload = multer({
   }
 });
 
+// Ensure uploads directory exists
+if (!fs.existsSync('./uploads')) {
+  fs.mkdirSync('./uploads', { recursive: true });
+}
+
 // --------------------
 // Vector Storage Configuration
 // --------------------
 const QDRANT_URL = process.env.QDRANT_URL || "http://localhost:6333";
-const USE_IN_MEMORY = false; // Set to false to use Qdrant (requires Qdrant server running)
-const COLLECTION_NAME = "books";
+const COLLECTION_NAME = process.env.COLLECTION_NAME || "books";
 const VECTOR_SIZE = 384; // all-MiniLM-L6-v2 output size
 
-// In-memory vector store
 let inMemoryVectorStore = [];
-let documentsMetadata = []; // Store document metadata
 let qdrant = null;
 let useQdrant = false;
 
-// Try to connect to Qdrant
+// Initialize Qdrant connection
 async function initializeVectorStore() {
-  if (!USE_IN_MEMORY) {
-    try {
-      console.log(`Attempting to connect to Qdrant at ${QDRANT_URL}...`);
-      
-      // Parse URL to handle port properly
-      const url = new URL(QDRANT_URL);
-      const isHttps = url.protocol === 'https:';
-      const port = url.port || (isHttps ? 443 : 6333);
-      
-      qdrant = new QdrantClient({
-        url: QDRANT_URL,
-        port: port,
-        https: isHttps,
-        checkCompatibility: false
+  try {
+    console.log(`Connecting to Qdrant at ${QDRANT_URL}...`);
+    
+    const url = new URL(QDRANT_URL);
+    const isHttps = url.protocol === 'https:';
+    const port = url.port || (isHttps ? 443 : 6333);
+    
+    qdrant = new QdrantClient({
+      url: QDRANT_URL,
+      port: port,
+      https: isHttps,
+      checkCompatibility: false
+    });
+    
+    // Test connection
+    await Promise.race([
+      qdrant.getCollections(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 10000))
+    ]);
+    
+    // Create collection if needed
+    const collections = await qdrant.getCollections();
+    const exists = collections.collections.some(c => c.name === COLLECTION_NAME);
+    
+    if (!exists) {
+      await qdrant.createCollection(COLLECTION_NAME, {
+        vectors: { size: VECTOR_SIZE, distance: "Cosine" }
       });
-      
-      console.log(`Connection config: URL=${QDRANT_URL}, Port=${port}, HTTPS=${isHttps}`);
-      
-      // Test connection with longer timeout for HTTPS
-      await Promise.race([
-        qdrant.getCollections(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000))
-      ]);
-      
-      // Create collection if needed
-      const collections = await qdrant.getCollections();
-      const exists = collections.collections.some(c => c.name === COLLECTION_NAME);
-      if (!exists) {
-        await qdrant.createCollection(COLLECTION_NAME, {
-          vectors: { 
-            size: VECTOR_SIZE, 
-            distance: "Cosine" 
-          }
-        });
-        console.log(`✓ Qdrant collection '${COLLECTION_NAME}' created!`);
-      } else {
-        console.log(`✓ Connected to Qdrant at ${QDRANT_URL}`);
-      }
-      
-      useQdrant = true;
-    } catch (err) {
-      console.log(`⚠ Could not connect to Qdrant at ${QDRANT_URL}`);
-      console.log(`Error details: ${err.message}`);
-      if (err.cause) {
-        console.log(`Cause: ${err.cause.message || err.cause}`);
-      }
-      console.log(`✓ Using in-memory vector store instead`);
-      useQdrant = false;
+      console.log(`✓ Created collection '${COLLECTION_NAME}'`);
     }
-  } else {
+    
+    console.log(`✓ Connected to Qdrant`);
+    useQdrant = true;
+  } catch (err) {
+    console.log(`⚠ Qdrant unavailable: ${err.message}`);
     console.log(`✓ Using in-memory vector store`);
     useQdrant = false;
   }
 }
 
-// Helper: Calculate cosine similarity
+// --------------------
+// Embedding Model
+// --------------------
+let embeddingModel = null;
+let modelLoading = false;
+
+async function loadModel() {
+  if (modelLoading) return;
+  modelLoading = true;
+  
+  try {
+    console.log("Loading embedding model...");
+    embeddingModel = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    console.log("✓ Embedding model loaded!");
+  } catch (err) {
+    console.error("Failed to load embedding model:", err.message);
+  }
+  
+  modelLoading = false;
+}
+
+// Initialize on startup
+(async () => {
+  await loadModel();
+  await initializeVectorStore();
+  console.log(`\n✓ RAG Microservice ready on port ${PORT}\n`);
+})();
+
+// --------------------
+// Helper Functions
+// --------------------
+
+function generateUUID() {
+  return crypto.randomUUID();
+}
+
+function generateBookId() {
+  // Use UUID for Qdrant compatibility
+  return crypto.randomUUID();
+}
+
 function cosineSimilarity(vecA, vecB) {
   const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
   const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
@@ -120,213 +169,211 @@ function cosineSimilarity(vecA, vecB) {
   return dotProduct / (magnitudeA * magnitudeB);
 }
 
-// Helper: Store vectors (in-memory or Qdrant)
 async function storeVectors(points) {
   if (useQdrant && qdrant) {
-    // Upload in batches to avoid "Request Entity Too Large" error
-    const BATCH_SIZE = 100; // Upload 100 chunks at a time
-    
+    const BATCH_SIZE = 100;
     for (let i = 0; i < points.length; i += BATCH_SIZE) {
       const batch = points.slice(i, i + BATCH_SIZE);
-      await qdrant.upsert(COLLECTION_NAME, {
-        wait: true,
-        points: batch,
-      });
-      
-      if (points.length > BATCH_SIZE) {
-        console.log(`Uploaded batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(points.length / BATCH_SIZE)} (${batch.length} chunks)`);
-      }
+      await qdrant.upsert(COLLECTION_NAME, { wait: true, points: batch });
     }
   } else {
-    // Store in memory
     inMemoryVectorStore.push(...points);
   }
 }
 
-// Helper: Search vectors (in-memory or Qdrant)
-async function searchVectors(queryVector, limit = 5) {
+async function searchVectors(queryVector, limit = 5, bookId = null) {
   if (useQdrant && qdrant) {
-    return await qdrant.search(COLLECTION_NAME, {
+    const searchParams = {
       vector: queryVector,
       limit: limit,
       with_payload: true,
-    });
+    };
+    
+    // Filter by book_id if specified
+    if (bookId) {
+      searchParams.filter = {
+        must: [{ key: "book_id", match: { value: bookId } }]
+      };
+    }
+    
+    return await qdrant.search(COLLECTION_NAME, searchParams);
   } else {
-    // Search in memory
-    const results = inMemoryVectorStore.map(point => ({
+    let results = inMemoryVectorStore;
+    
+    // Filter by book_id if specified
+    if (bookId) {
+      results = results.filter(p => p.payload.book_id === bookId);
+    }
+    
+    results = results.map(point => ({
       id: point.id,
       score: cosineSimilarity(queryVector, point.vector),
       payload: point.payload
     }));
     
-    // Sort by score descending
     results.sort((a, b) => b.score - a.score);
-    
-    // Return top N
     return results.slice(0, limit);
   }
 }
 
-// Helper: Get vector store stats
-async function getVectorStats() {
+async function deleteBookVectors(bookId) {
   if (useQdrant && qdrant) {
-    const collectionInfo = await qdrant.getCollection(COLLECTION_NAME);
-    return {
-      pointsCount: collectionInfo.points_count,
-      vectorSize: collectionInfo.config.params.vectors.size,
-      backend: 'Qdrant'
-    };
-  } else {
-    return {
-      pointsCount: inMemoryVectorStore.length,
-      vectorSize: VECTOR_SIZE,
-      backend: 'In-Memory'
-    };
-  }
-}
-
-// --------------------
-// Load local embedding model
-// --------------------
-let embeddingModel;
-async function loadModel() {
-  try {
-    console.log("Loading embedding model...");
-    embeddingModel = await pipeline(
-      "feature-extraction", 
-      "Xenova/all-MiniLM-L6-v2"
-    );
-    console.log("✓ Embedding model loaded!");
-  } catch (err) {
-    console.error("Error loading model:", err.message);
-  }
-}
-
-// Initialize on startup
-(async () => {
-  await loadModel();
-  await initializeVectorStore();
-})();
-
-// --------------------
-// Helper: Extract text from PDF with fallback methods
-// --------------------
-async function extractPDFText(filePath) {
-  console.log(`Attempting to extract text from: ${path.basename(filePath)}`);
-  
-  // Method 1: Try pdf-parse (fast, works for most PDFs)
-  try {
-    const dataBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdfParse(dataBuffer, {
-      max: 0, // No page limit
-      version: 'default'
+    const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
+      limit: 10000,
+      with_payload: true,
+      with_vector: false
     });
     
-    if (pdfData.text && pdfData.text.trim().length > 50) {
-      console.log(`✓ Extracted ${pdfData.text.length} characters using pdf-parse`);
-      return pdfData.text;
+    const pointIds = scrollResult.points
+      .filter(p => p.payload.book_id === bookId)
+      .map(p => p.id);
+    
+    if (pointIds.length > 0) {
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < pointIds.length; i += BATCH_SIZE) {
+        const batch = pointIds.slice(i, i + BATCH_SIZE);
+        await qdrant.delete(COLLECTION_NAME, { wait: true, points: batch });
+      }
     }
-  } catch (err) {
-    console.log(`⚠ pdf-parse failed: ${err.message}`);
+    
+    return pointIds.length;
+  } else {
+    const before = inMemoryVectorStore.length;
+    inMemoryVectorStore = inMemoryVectorStore.filter(p => p.payload.book_id !== bookId);
+    return before - inMemoryVectorStore.length;
   }
+}
+
+async function getBookInfo(bookId) {
+  if (useQdrant && qdrant) {
+    const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
+      limit: 10000,
+      with_payload: true,
+      with_vector: false
+    });
+    
+    const bookPoints = scrollResult.points.filter(p => p.payload.book_id === bookId);
+    if (bookPoints.length === 0) return null;
+    
+    const firstPoint = bookPoints[0];
+    return {
+      book_id: bookId,
+      file_name: firstPoint.payload.file_name,
+      file_path: firstPoint.payload.file_path,
+      chunk_count: bookPoints.length,
+      created_at: firstPoint.payload.created_at
+    };
+  } else {
+    const bookPoints = inMemoryVectorStore.filter(p => p.payload.book_id === bookId);
+    if (bookPoints.length === 0) return null;
+    
+    const firstPoint = bookPoints[0];
+    return {
+      book_id: bookId,
+      file_name: firstPoint.payload.file_name,
+      file_path: firstPoint.payload.file_path,
+      chunk_count: bookPoints.length,
+      created_at: firstPoint.payload.created_at
+    };
+  }
+}
+
+async function getBookChunks(bookId) {
+  if (useQdrant && qdrant) {
+    const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
+      limit: 10000,
+      with_payload: true,
+      with_vector: false
+    });
+    
+    return scrollResult.points
+      .filter(p => p.payload.book_id === bookId)
+      .map(p => ({
+        chunk_id: p.id,
+        chunk_index: p.payload.chunk_index,
+        text: p.payload.text,
+        text_length: p.payload.text.length
+      }))
+      .sort((a, b) => a.chunk_index - b.chunk_index);
+  } else {
+    return inMemoryVectorStore
+      .filter(p => p.payload.book_id === bookId)
+      .map(p => ({
+        chunk_id: p.id,
+        chunk_index: p.payload.chunk_index,
+        text: p.payload.text,
+        text_length: p.payload.text.length
+      }))
+      .sort((a, b) => a.chunk_index - b.chunk_index);
+  }
+}
+
+// PDF Text Extraction with fallbacks
+async function extractPDFText(filePath) {
+  // Method 1: pdf-parse
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const data = await pdfParse(buffer, { max: 0, version: 'default' });
+    if (data.text && data.text.trim().length > 50) {
+      return { text: data.text, method: 'pdf-parse', pages: data.numpages };
+    }
+  } catch (err) { /* Continue to next method */ }
   
-  // Method 2: Try pdf2json (more robust for complex PDFs)
+  // Method 2: pdf2json
   try {
     return await new Promise((resolve, reject) => {
-      const pdfParser = new PDFParser(null, 1);
+      const parser = new PDFParser(null, 1);
       
-      pdfParser.on("pdfParser_dataError", errData => {
-        reject(new Error(errData.parserError));
-      });
-      
-      pdfParser.on("pdfParser_dataReady", pdfData => {
-        try {
-          let text = '';
-          
-          if (pdfData.Pages) {
-            pdfData.Pages.forEach(page => {
-              if (page.Texts) {
-                page.Texts.forEach(textItem => {
-                  if (textItem.R) {
-                    textItem.R.forEach(r => {
-                      if (r.T) {
-                        text += decodeURIComponent(r.T) + ' ';
-                      }
-                    });
-                  }
-                });
-              }
-              text += '\n';
-            });
-          }
-          
-          if (text.trim().length > 50) {
-            console.log(`✓ Extracted ${text.length} characters using pdf2json`);
-            resolve(text);
-          } else {
-            reject(new Error('Insufficient text extracted'));
-          }
-        } catch (err) {
-          reject(err);
+      parser.on("pdfParser_dataError", e => reject(e.parserError));
+      parser.on("pdfParser_dataReady", data => {
+        let text = '';
+        let pageCount = 0;
+        
+        if (data.Pages) {
+          pageCount = data.Pages.length;
+          data.Pages.forEach(page => {
+            if (page.Texts) {
+              page.Texts.forEach(item => {
+                if (item.R) {
+                  item.R.forEach(r => {
+                    if (r.T) text += decodeURIComponent(r.T) + ' ';
+                  });
+                }
+              });
+            }
+            text += '\n';
+          });
+        }
+        
+        if (text.trim().length > 50) {
+          resolve({ text, method: 'pdf2json', pages: pageCount });
+        } else {
+          reject(new Error('Insufficient text'));
         }
       });
       
-      pdfParser.loadPDF(filePath);
+      parser.loadPDF(filePath);
     });
-  } catch (err) {
-    console.log(`⚠ pdf2json failed: ${err.message}`);
-  }
+  } catch (err) { /* Continue to next method */ }
   
-  // Method 3: Try pdf-parse with different options
-  try {
-    const dataBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdfParse(dataBuffer, {
-      max: 0,
-      version: 'v1.10.100',
-      pagerender: function(pageData) {
-        return pageData.getTextContent()
-          .then(function(textContent) {
-            let text = '';
-            textContent.items.forEach(function(item) {
-              text += item.str + ' ';
-            });
-            return text;
-          });
-      }
-    });
-    
-    if (pdfData.text && pdfData.text.trim().length > 0) {
-      console.log(`✓ Extracted ${pdfData.text.length} characters using pdf-parse (alternative method)`);
-      return pdfData.text;
-    }
-  } catch (err) {
-    console.log(`⚠ pdf-parse alternative failed: ${err.message}`);
-  }
-  
-  throw new Error('Could not extract text from PDF using any available method. The PDF might be password-protected, corrupted, or contain only images.');
+  throw new Error('Could not extract text from PDF');
 }
 
-// --------------------
-// Helper: Generate embeddings with mean pooling
-// --------------------
+// Generate embedding
 async function generateEmbedding(text) {
   const output = await embeddingModel(text, { pooling: 'mean', normalize: true });
   return Array.from(output.data);
 }
 
-// --------------------
-// Helper: Chunk text intelligently
-// --------------------
-function chunkText(text, chunkSize = 500, overlap = 50) {
+// Chunk text
+function chunkText(text, chunkSize = 600, overlap = 100) {
   const chunks = [];
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-  
   let currentChunk = "";
   
   for (const sentence of sentences) {
     if ((currentChunk + sentence).length > chunkSize && currentChunk.length > 0) {
       chunks.push(currentChunk.trim());
-      // Keep last part for overlap
       const words = currentChunk.split(' ');
       currentChunk = words.slice(-Math.floor(overlap / 10)).join(' ') + ' ' + sentence;
     } else {
@@ -338,434 +385,550 @@ function chunkText(text, chunkSize = 500, overlap = 50) {
     chunks.push(currentChunk.trim());
   }
   
-  return chunks.filter(c => c.length > 10); // Filter out very short chunks
+  return chunks.filter(c => c.length > 10);
 }
 
 // --------------------
-// Upload PDF & vectorize
+// API ENDPOINTS
 // --------------------
-app.post("/upload", upload.single("pdf"), async (req, res) => {
+
+/**
+ * POST /api/v1/books/upload
+ * Upload and process a PDF book
+ */
+app.post("/api/v1/books/upload", upload.single("file"), async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({
+        success: false,
+        error: { code: "NO_FILE", message: "No PDF file provided. Use 'file' field in multipart/form-data" }
+      });
     }
 
     if (!embeddingModel) {
-      return res.status(503).json({ error: "Embedding model not loaded yet. Please wait." });
+      return res.status(503).json({
+        success: false,
+        error: { code: "MODEL_NOT_READY", message: "Embedding model is still loading. Please retry in a few seconds." }
+      });
     }
 
     const filePath = req.file.path;
-    const fileName = req.file.originalname;
+    const originalName = req.file.originalname;
     const fileSize = req.file.size;
 
-    console.log(`Processing PDF: ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+    // Generate unique book ID
+    const bookId = generateBookId();
 
-    // Generate unique book ID for this document
-    const bookId = `book_${Date.now()}`;
-
-    // Extract text using robust method with fallbacks
-    const text = await extractPDFText(filePath);
+    // Extract text from PDF
+    const extraction = await extractPDFText(filePath);
+    const text = extraction.text;
+    const pageCount = extraction.pages || 0;
 
     if (!text || text.trim().length === 0) {
-      return res.status(400).json({ error: "Could not extract text from PDF" });
+      // Keep the file but return error
+      return res.status(400).json({
+        success: false,
+        error: { code: "EXTRACTION_FAILED", message: "Could not extract text from PDF" }
+      });
     }
 
-    console.log(`Extracted ${text.length} characters from PDF`);
-
-    // Chunk text intelligently
+    // Chunk text
     const chunks = chunkText(text, 600, 100);
-    console.log(`Created ${chunks.length} chunks`);
 
     if (chunks.length === 0) {
-      return res.status(400).json({ error: "No valid text chunks created" });
+      return res.status(400).json({
+        success: false,
+        error: { code: "NO_CHUNKS", message: "No valid text chunks could be created" }
+      });
     }
 
-    // Generate embeddings and prepare points
+    // Generate embeddings and store
     const points = [];
     for (let i = 0; i < chunks.length; i++) {
       const vector = await generateEmbedding(chunks[i]);
-      
-      // Create globally unique ID for this chunk
-      const uniqueId = `${bookId}_chunk_${i}`;
+      const chunkId = generateUUID(); // UUID for Qdrant compatibility
       
       points.push({
-        id: uniqueId,
+        id: chunkId,
         vector: vector,
-        payload: { 
-          book_id: bookId,              // Unique identifier for this book
+        payload: {
+          book_id: bookId,
           text: chunks[i],
-          fileName: fileName,
-          chunkIndex: i,
-          uploadDate: new Date().toISOString(),
-          totalChunks: chunks.length
-        },
+          chunk_index: i,
+          total_chunks: chunks.length,
+          file_name: originalName,
+          file_path: `./uploads/${bookId}_${originalName}`,
+          created_at: new Date().toISOString()
+        }
       });
-
-      // Log progress for large documents
-      if ((i + 1) % 10 === 0) {
-        console.log(`Processed ${i + 1}/${chunks.length} chunks`);
-      }
     }
 
-    // Upload to vector store (Qdrant or in-memory)
     await storeVectors(points);
 
-    // Store document metadata with book_id
-    documentsMetadata.push({
-      id: bookId,
-      book_id: bookId,               // Store book_id in metadata too
-      fileName: fileName,
-      fileSize: fileSize,
-      uploadDate: new Date().toISOString(),
-      chunksCount: points.length,
-      textLength: text.length,
-      firstChunkId: points[0].id
-    });
+    // Rename file to use book_id for easy reference
+    const newFileName = `${bookId}_${originalName}`;
+    const newFilePath = path.join('./uploads', newFileName);
+    fs.renameSync(filePath, newFilePath);
 
-    console.log(`✓ Uploaded ${points.length} chunks to vector store`);
+    const processingTime = Date.now() - startTime;
 
-    // Clean up uploaded file
-    fs.unlinkSync(filePath);
-
-    res.json({ 
-      status: "success", 
-      chunksUploaded: points.length,
-      fileName: fileName,
-      textLength: text.length,
-      documentId: docId
+    // Return comprehensive data for MySQL storage
+    res.status(201).json({
+      success: true,
+      data: {
+        // Primary identifiers (store these in MySQL)
+        book_id: bookId,
+        
+        // File information
+        file_name: originalName,
+        file_path: newFilePath,
+        stored_file_name: newFileName,
+        file_size_bytes: fileSize,
+        file_size_mb: parseFloat((fileSize / 1024 / 1024).toFixed(2)),
+        
+        // Content metrics
+        page_count: pageCount,
+        text_length: text.length,
+        word_count: text.split(/\s+/).length,
+        
+        // Chunk information
+        chunk_count: chunks.length,
+        chunk_size: 600,
+        chunk_overlap: 100,
+        first_chunk_id: points[0].id,
+        last_chunk_id: points[points.length - 1].id,
+        
+        // Processing metadata
+        extraction_method: extraction.method,
+        embedding_model: "all-MiniLM-L6-v2",
+        vector_dimension: VECTOR_SIZE,
+        storage_backend: useQdrant ? "qdrant" : "in-memory",
+        
+        // Timestamps
+        created_at: new Date().toISOString(),
+        processing_time_ms: processingTime
+      }
     });
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --------------------
-// List all documents
-// --------------------
-app.get("/documents", (req, res) => {
-  try {
-    res.json({
-      documents: documentsMetadata,
-      totalDocuments: documentsMetadata.length
+    
+    // File is kept in uploads folder even on error for debugging
+    
+    res.status(500).json({
+      success: false,
+      error: { code: "PROCESSING_ERROR", message: err.message }
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 
-// --------------------
-// Get document details and preview
-// --------------------
-app.get("/documents/:id", async (req, res) => {
+/**
+ * POST /api/v1/search
+ * Search across all books or a specific book
+ */
+app.post("/api/v1/search", async (req, res) => {
   try {
-    const { id } = req.params;
-    const doc = documentsMetadata.find(d => d.id === id);
-    
-    if (!doc) {
-      return res.status(404).json({ error: "Document not found" });
-    }
-    
-    let chunks = [];
-    
-    if (useQdrant && qdrant) {
-      // Scroll through all points and filter by book_id
-      const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
-        limit: 10000,
-        with_payload: true,
-        with_vector: false
-      });
-      
-      chunks = scrollResult.points
-        .filter(point => point.payload.book_id === doc.book_id)
-        .map((point, idx) => ({
-          index: point.payload.chunkIndex || idx,
-          text: point.payload.text,
-          id: point.id
-        }));
-    } else {
-      // Get from in-memory store
-      chunks = inMemoryVectorStore
-        .filter(point => point.payload.book_id === doc.book_id)
-        .map((chunk, idx) => ({
-          index: idx,
-          text: chunk.payload.text,
-          id: chunk.id
-        }));
-    }
-    
-    res.json({
-      ...doc,
-      chunks: chunks.sort((a, b) => a.index - b.index)
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --------------------
-// Delete document
-// --------------------
-app.delete("/documents/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const docIndex = documentsMetadata.findIndex(d => d.id === id);
-    
-    if (docIndex === -1) {
-      return res.status(404).json({ error: "Document not found" });
-    }
-    
-    const doc = documentsMetadata[docIndex];
-    
-    // Remove from vector store
-    if (useQdrant && qdrant) {
-      console.log(`Deleting "${doc.fileName}" from Qdrant...`);
-      
-      // First, get all point IDs for this document
-      const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
-        limit: 10000,
-        with_payload: true,
-        with_vector: false
-      });
-      
-      const pointIdsToDelete = scrollResult.points
-        .filter(point => point.payload.fileName === doc.fileName)
-        .map(point => point.id);
-      
-      if (pointIdsToDelete.length > 0) {
-        // Delete points in batches
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < pointIdsToDelete.length; i += BATCH_SIZE) {
-          const batch = pointIdsToDelete.slice(i, i + BATCH_SIZE);
-          await qdrant.delete(COLLECTION_NAME, {
-            wait: true,
-            points: batch
-          });
-        }
-        console.log(`✓ Deleted ${pointIdsToDelete.length} chunks from Qdrant`);
-      }
-    } else {
-      // Remove from in-memory store
-      const beforeCount = inMemoryVectorStore.length;
-      inMemoryVectorStore = inMemoryVectorStore.filter(
-        point => point.payload.book_id !== doc.book_id
-      );
-      const deletedCount = beforeCount - inMemoryVectorStore.length;
-      console.log(`✓ Deleted ${deletedCount} chunks from memory`);
-    }
-    
-    // Remove from metadata
-    documentsMetadata.splice(docIndex, 1);
-    
-    console.log(`✓ Deleted document: ${doc.fileName}`);
-    
-    res.json({ 
-      status: "success", 
-      message: `Document "${doc.fileName}" deleted successfully`,
-      deletedDocument: doc
-    });
-  } catch (err) {
-    console.error("Delete error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --------------------
-// Update document (re-upload with same name)
-// --------------------
-app.put("/documents/:id", upload.single("pdf"), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const docIndex = documentsMetadata.findIndex(d => d.id === id);
-    
-    if (docIndex === -1) {
-      return res.status(404).json({ error: "Document not found" });
-    }
-    
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    if (!embeddingModel) {
-      return res.status(503).json({ error: "Embedding model not loaded yet. Please wait." });
-    }
-
-    const oldDoc = documentsMetadata[docIndex];
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
-    const fileSize = req.file.size;
-
-    console.log(`Updating document: ${oldDoc.fileName} -> ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
-
-    // Delete old document chunks
-    if (useQdrant && qdrant) {
-      console.log(`Deleting old version "${oldDoc.fileName}" (book_id: ${oldDoc.book_id}) from Qdrant...`);
-      
-      const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
-        limit: 10000,
-        with_payload: true,
-        with_vector: false
-      });
-      
-      const pointIdsToDelete = scrollResult.points
-        .filter(point => point.payload.book_id === oldDoc.book_id)
-        .map(point => point.id);
-      
-      if (pointIdsToDelete.length > 0) {
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < pointIdsToDelete.length; i += BATCH_SIZE) {
-          const batch = pointIdsToDelete.slice(i, i + BATCH_SIZE);
-          await qdrant.delete(COLLECTION_NAME, {
-            wait: true,
-            points: batch
-          });
-        }
-        console.log(`✓ Deleted ${pointIdsToDelete.length} old chunks`);
-      }
-    } else {
-      inMemoryVectorStore = inMemoryVectorStore.filter(
-        point => point.payload.book_id !== oldDoc.book_id
-      );
-    }
-
-    // Extract and process new PDF
-    const text = await extractPDFText(filePath);
-
-    if (!text || text.trim().length === 0) {
-      return res.status(400).json({ error: "Could not extract text from PDF" });
-    }
-
-    console.log(`Extracted ${text.length} characters from PDF`);
-
-    // Chunk and embed
-    const chunks = chunkText(text, 600, 100);
-    console.log(`Created ${chunks.length} chunks`);
-
-    if (chunks.length === 0) {
-      return res.status(400).json({ error: "No valid text chunks created" });
-    }
-
-    const points = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const vector = await generateEmbedding(chunks[i]);
-      
-      // Preserve the same book_id for this document update
-      const uniqueId = `${oldDoc.book_id}_chunk_${i}`;
-      
-      points.push({
-        id: uniqueId,
-        vector: vector,
-        payload: { 
-          book_id: oldDoc.book_id,  // Keep the same book_id
-          text: chunks[i],
-          fileName: fileName,
-          chunkIndex: i,
-          uploadDate: new Date().toISOString(),
-          totalChunks: chunks.length
-        },
-      });
-
-      if ((i + 1) % 10 === 0) {
-        console.log(`Processed ${i + 1}/${chunks.length} chunks`);
-      }
-    }
-
-    // Store vectors
-    await storeVectors(points);
-
-    // Update metadata
-    documentsMetadata[docIndex] = {
-      id: id,
-      book_id: oldDoc.book_id,   // Preserve book_id
-      fileName: fileName,
-      fileSize: fileSize,
-      uploadDate: new Date().toISOString(),
-      chunksCount: points.length,
-      textLength: text.length,
-      firstChunkId: points[0].id,
-      previousVersion: oldDoc.fileName
-    };
-
-    // Clean up
-    fs.unlinkSync(filePath);
-
-    console.log(`✓ Updated document successfully`);
-
-    res.json({ 
-      status: "success", 
-      message: "Document updated successfully",
-      chunksUploaded: points.length,
-      fileName: fileName,
-      textLength: text.length,
-      documentId: id
-    });
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --------------------
-// Search Endpoint
-// --------------------
-app.post("/search", async (req, res) => {
-  try {
-    const { query } = req.body;
+    const { query, book_id, limit = 5 } = req.body;
 
     if (!query || query.trim().length === 0) {
-      return res.status(400).json({ error: "Query is required" });
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUERY", message: "Query is required" }
+      });
     }
 
     if (!embeddingModel) {
-      return res.status(503).json({ error: "Embedding model not loaded yet" });
+      return res.status(503).json({
+        success: false,
+        error: { code: "MODEL_NOT_READY", message: "Embedding model is still loading" }
+      });
     }
 
-    console.log(`Searching for: "${query}"`);
-
-    // Generate query embedding
     const queryVector = await generateEmbedding(query);
-
-    // Search in vector store (Qdrant or in-memory)
-    const searchResults = await searchVectors(queryVector, 5);
-
-    console.log(`Found ${searchResults.length} results`);
+    const results = await searchVectors(queryVector, Math.min(limit, 20), book_id);
 
     res.json({
-      query: query,
-      results: searchResults.map(result => ({
-        text: result.payload.text,
-        score: result.score,
-        fileName: result.payload.fileName,
-        chunkIndex: result.payload.chunkIndex
-      }))
+      success: true,
+      data: {
+        query: query,
+        book_id: book_id || null,
+        result_count: results.length,
+        results: results.map(r => ({
+          chunk_id: r.id,
+          book_id: r.payload.book_id,
+          text: r.payload.text,
+          score: parseFloat(r.score.toFixed(4)),
+          chunk_index: r.payload.chunk_index,
+          file_name: r.payload.file_name
+        }))
+      }
     });
   } catch (err) {
     console.error("Search error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      success: false,
+      error: { code: "SEARCH_ERROR", message: err.message }
+    });
   }
 });
 
-// --------------------
-// Health check endpoint
-// --------------------
-app.get("/health", (req, res) => {
-  res.json({ 
-    status: "ok",
-    modelLoaded: !!embeddingModel,
-    timestamp: new Date().toISOString()
+/**
+ * GET /api/v1/books
+ * List all books/documents in the collection
+ */
+app.get("/api/v1/books", async (req, res) => {
+  try {
+    const { limit = 100 } = req.query;
+    
+    if (!useQdrant) {
+      // In-memory: group by book_id
+      const booksMap = new Map();
+      inMemoryVectorStore.forEach(item => {
+        const bookId = item.payload.book_id;
+        if (!booksMap.has(bookId)) {
+          booksMap.set(bookId, {
+            book_id: bookId,
+            title: item.payload.file_name || 'Untitled',
+            filename: item.payload.file_name || null,
+            file_path: item.payload.file_path || null,
+            chunk_count: 0,
+            created_at: item.payload.created_at || null
+          });
+        }
+        booksMap.get(bookId).chunk_count++;
+      });
+      
+      const books = Array.from(booksMap.values()).slice(0, parseInt(limit));
+      return res.json({
+        success: true,
+        data: {
+          books,
+          total: books.length
+        }
+      });
+    }
+    
+    // Qdrant: scroll through all points and group by book_id
+    const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
+      limit: 1000,
+      with_payload: true,
+      with_vector: false
+    });
+    
+    const booksMap = new Map();
+    scrollResult.points.forEach(point => {
+      const bookId = point.payload.book_id;
+      if (!booksMap.has(bookId)) {
+        booksMap.set(bookId, {
+          book_id: bookId,
+          title: point.payload.file_name || 'Untitled',
+          filename: point.payload.file_name || null,
+          file_path: point.payload.file_path || null,
+          chunk_count: 0,
+          created_at: point.payload.created_at || null
+        });
+      }
+      booksMap.get(bookId).chunk_count++;
+    });
+    
+    const books = Array.from(booksMap.values()).slice(0, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: {
+        books,
+        total: books.length
+      }
+    });
+  } catch (err) {
+    console.error("List books error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "LIST_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * GET /api/v1/books/:bookId
+ * Get book details and chunks
+ */
+app.get("/api/v1/books/:bookId", async (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const { include_chunks = false } = req.query;
+
+    const bookInfo = await getBookInfo(bookId);
+    
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    const chunks = await getBookChunks(bookId);
+
+    const response = {
+      success: true,
+      data: {
+        book_id: bookId,
+        file_name: bookInfo.file_name,
+        file_path: bookInfo.file_path,
+        chunk_count: chunks.length,
+        total_text_length: chunks.reduce((sum, c) => sum + c.text_length, 0),
+        created_at: bookInfo.created_at,
+        storage_backend: useQdrant ? "qdrant" : "in-memory"
+      }
+    };
+
+    if (include_chunks === 'true' || include_chunks === true) {
+      response.data.chunks = chunks;
+    }
+
+    res.json(response);
+  } catch (err) {
+    console.error("Get book error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "FETCH_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * GET /api/v1/books/:bookId/download
+ * Download the original PDF file
+ */
+app.get("/api/v1/books/:bookId/download", async (req, res) => {
+  try {
+    const { bookId } = req.params;
+    
+    const bookInfo = await getBookInfo(bookId);
+    
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    if (!bookInfo.file_path) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NO_FILE", message: "No file associated with this book (text ingestion)" }
+      });
+    }
+
+    const absolutePath = path.resolve(bookInfo.file_path);
+    
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "FILE_NOT_FOUND", message: "File no longer exists on server" }
+      });
+    }
+
+    res.download(absolutePath, bookInfo.file_name);
+  } catch (err) {
+    console.error("Download error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "DOWNLOAD_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/books/text
+ * Ingest raw text content (alternative to PDF upload)
+ * Use this when sending text directly from backend instead of PDF
+ */
+app.post("/api/v1/books/text", async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { text, title, chunk_size, chunk_overlap} = req.body;
+
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "NO_TEXT", message: "Text content is required" }
+      });
+    }
+
+    if (!embeddingModel) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "MODEL_NOT_READY", message: "Embedding model is still loading" }
+      });
+    }
+
+    const bookId = generateBookId();
+    const chunks = chunkText(text, chunk_size, chunk_overlap);
+
+    if (chunks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "NO_CHUNKS", message: "No valid text chunks could be created" }
+      });
+    }
+
+    const points = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const vector = await generateEmbedding(chunks[i]);
+      const chunkId = generateUUID(); // UUID for Qdrant compatibility
+      
+      points.push({
+        id: chunkId,
+        vector: vector,
+        payload: {
+          book_id: bookId,
+          text: chunks[i],
+          chunk_index: i,
+          total_chunks: chunks.length,
+          file_name: title,
+          created_at: new Date().toISOString()
+        }
+      });
+    }
+
+    await storeVectors(points);
+
+    const processingTime = Date.now() - startTime;
+
+    res.status(201).json({
+      success: true,
+      data: {
+        book_id: bookId,
+        title: title,
+        text_length: text.length,
+        word_count: text.split(/\s+/).length,
+        chunk_count: chunks.length,
+        storage_backend: useQdrant ? "qdrant" : "in-memory",
+        created_at: new Date().toISOString(),
+        processing_time_ms: processingTime
+      }
+    });
+  } catch (err) {
+    console.error("Text ingest error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "PROCESSING_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * DELETE /api/v1/books/:bookId
+ * Delete a book and all its chunks
+ */
+app.delete("/api/v1/books/:bookId", async (req, res) => {
+  try {
+    const { bookId } = req.params;
+
+    const deletedCount = await deleteBookVectors(bookId);
+
+    if (deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Book not found or already deleted" }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        book_id: bookId,
+        deleted_chunks: deletedCount,
+        deleted_at: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "DELETE_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * GET /api/v1/health
+ * Health check endpoint
+ */
+app.get("/api/v1/health", (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      status: "healthy",
+      api_version: API_VERSION,
+      embedding_model_loaded: !!embeddingModel,
+      storage_backend: useQdrant ? "qdrant" : "in-memory",
+      qdrant_url: useQdrant ? QDRANT_URL : null,
+      collection_name: COLLECTION_NAME,
+      timestamp: new Date().toISOString()
+    }
   });
 });
 
-// --------------------
-// Get collection stats
-// --------------------
-app.get("/stats", async (req, res) => {
+/**
+ * GET /api/v1/stats
+ * Get vector store statistics
+ */
+app.get("/api/v1/stats", async (req, res) => {
   try {
-    const stats = await getVectorStats();
-    res.json(stats);
+    let stats;
+    
+    if (useQdrant && qdrant) {
+      const info = await qdrant.getCollection(COLLECTION_NAME);
+      stats = {
+        total_vectors: info.points_count,
+        vector_dimension: info.config.params.vectors.size,
+        storage_backend: "qdrant"
+      };
+    } else {
+      stats = {
+        total_vectors: inMemoryVectorStore.length,
+        vector_dimension: VECTOR_SIZE,
+        storage_backend: "in-memory"
+      };
+    }
+
+    res.json({
+      success: true,
+      data: stats
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      success: false,
+      error: { code: "STATS_ERROR", message: err.message }
+    });
   }
 });
 
-app.listen(PORT, () => console.log(`✓ Server running on http://localhost:${PORT}`));
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: { code: "NOT_FOUND", message: `Endpoint ${req.method} ${req.path} not found` }
+  });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({
+    success: false,
+    error: { code: "INTERNAL_ERROR", message: err.message }
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`  Lurniva RAG Microservice API v${API_VERSION}`);
+  console.log(`  Port: ${PORT}`);
+  console.log(`  Base URL: http://localhost:${PORT}/api/v1`);
+  console.log(`${'='.repeat(50)}\n`);
+});
