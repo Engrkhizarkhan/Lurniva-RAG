@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lurniva RAG - PDF Search</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .subtitle {
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .card {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      margin-bottom: 25px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .card h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+      font-size: 1.5em;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 600;
+    }
+
+    input[type="file"],
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    input[type="file"]:focus,
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+      display: block;
+    }
+
+    #results {
+      margin-top: 20px;
+    }
+
+    .result-item {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      border-left: 4px solid #667eea;
+      transition: transform 0.2s;
+    }
+
+    .result-item:hover {
+      transform: translateX(5px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .result-score {
+      background: #667eea;
+      color: white;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      font-weight: 600;
+    }
+
+    .result-meta {
+      font-size: 0.85em;
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .result-text {
+      color: #333;
+      line-height: 1.6;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 20px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 2em;
+      color: #667eea;
+      font-weight: bold;
+    }
+
+    .stat-label {
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .no-results svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 15px;
+      opacity: 0.3;
+    }
+
+    .document-item {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      border-left: 4px solid #28a745;
+      position: relative;
+    }
+
+    .document-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .document-title {
+      font-weight: bold;
+      color: #333;
+      font-size: 1.1em;
+    }
+
+    .document-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 0.9em;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-preview {
+      background: #17a2b8;
+      color: white;
+    }
+
+    .btn-preview:hover {
+      background: #138496;
+    }
+
+    .btn-update {
+      background: #ffc107;
+      color: #333;
+    }
+
+    .btn-update:hover {
+      background: #e0a800;
+    }
+
+    .btn-delete {
+      background: #dc3545;
+      color: white;
+    }
+
+    .btn-delete:hover {
+      background: #c82333;
+    }
+
+    .document-meta {
+      font-size: 0.85em;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .document-preview {
+      margin-top: 15px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .document-preview.show {
+      display: block;
+    }
+
+    .chunk-preview {
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #f0f0f0;
+      border-radius: 5px;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .chunk-preview-header {
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+
+    .modal-header {
+      font-size: 1.5em;
+      color: #667eea;
+      margin-bottom: 20px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .modal-actions button {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔍 Lurniva RAG</h1>
+      <p class="subtitle">Intelligent PDF Search with Vector Embeddings</p>
+    </header>
+
+    <!-- Upload Section -->
+    <div class="card">
+      <h2>📄 Upload PDF Document</h2>
+      <form id="uploadForm">
+        <div class="form-group">
+          <label for="pdfFile">Select PDF File (No size limit)</label>
+          <input type="file" id="pdfFile" name="pdf" accept=".pdf" required />
+        </div>
+        <button type="submit" id="uploadBtn">
+          <span id="uploadBtnText">Upload & Process</span>
+        </button>
+      </form>
+      <div id="uploadStatus" class="status"></div>
+    </div>
+
+    <!-- Search Section -->
+    <div class="card">
+      <h2>🔎 Search Your Documents</h2>
+      <form id="searchForm">
+        <div class="form-group">
+          <label for="searchQuery">Enter your question or search query</label>
+          <input 
+            type="text" 
+            id="searchQuery" 
+            name="query" 
+            placeholder="What are you looking for?" 
+            required 
+          />
+        </div>
+        <button type="submit" id="searchBtn">
+          <span id="searchBtnText">Search</span>
+        </button>
+      </form>
+      <div id="searchStatus" class="status"></div>
+      
+      <div id="results"></div>
+    </div>
+
+    <!-- Document Management Section -->
+    <div class="card">
+      <h2>📚 Manage Your Documents</h2>
+      <button onclick="loadDocuments()" style="margin-bottom: 20px; width: 100%;">Refresh Document List</button>
+      <div id="documentList"></div>
+    </div>
+
+    <!-- Stats Section -->
+    <div class="card">
+      <h2>📊 Collection Statistics</h2>
+      <div class="stats">
+        <div class="stat-item">
+          <div class="stat-value" id="statPoints">-</div>
+          <div class="stat-label">Documents Indexed</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="statVector">-</div>
+          <div class="stat-label">Vector Size</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="statBackend">-</div>
+          <div class="stat-label">Storage Backend</div>
+        </div>
+      </div>
+      <button onclick="loadStats()" style="margin-top: 20px; width: 100%;">Refresh Stats</button>
+    </div>
+  </div>
+
+  <!-- Update Document Modal -->
+  <div id="updateModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">Update Document</div>
+      <form id="updateForm">
+        <div class="form-group">
+          <label for="updateFile">Select New PDF File</label>
+          <input type="file" id="updateFile" name="pdf" accept=".pdf" required />
+        </div>
+        <div class="modal-actions">
+          <button type="button" onclick="closeUpdateModal()" class="btn-small btn-delete">Cancel</button>
+          <button type="submit" class="btn-small btn-update">Update</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const uploadForm = document.getElementById("uploadForm");
+    const searchForm = document.getElementById("searchForm");
+    const resultsDiv = document.getElementById("results");
+    const uploadStatus = document.getElementById("uploadStatus");
+    const searchStatus = document.getElementById("searchStatus");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const searchBtn = document.getElementById("searchBtn");
+    const uploadBtnText = document.getElementById("uploadBtnText");
+    const searchBtnText = document.getElementById("searchBtnText");
+    const documentList = document.getElementById("documentList");
+    const updateModal = document.getElementById("updateModal");
+    const updateForm = document.getElementById("updateForm");
+    let currentUpdateDocId = null;
+
+    // Show status message
+    function showStatus(element, message, type) {
+      element.className = `status ${type}`;
+      element.textContent = message;
+      element.style.display = 'block';
+    }
+
+    // Hide status message
+    function hideStatus(element) {
+      element.style.display = 'none';
+    }
+
+    // Upload form handler
+    uploadForm.onsubmit = async (e) => {
+      e.preventDefault();
+      hideStatus(uploadStatus);
+      
+      uploadBtn.disabled = true;
+      uploadBtnText.innerHTML = '<span class="loading"></span> Processing...';
+      
+      try {
+        const formData = new FormData(uploadForm);
+        const res = await fetch("/upload", { 
+          method: "POST", 
+          body: formData 
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+          showStatus(
+            uploadStatus, 
+            `✅ Success! Uploaded ${data.chunksUploaded} chunks from "${data.fileName}" (${data.textLength} characters)`, 
+            'success'
+          );
+          uploadForm.reset();
+          loadStats(); // Refresh stats
+          loadDocuments(); // Refresh document list
+        } else {
+          showStatus(uploadStatus, `❌ Error: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        showStatus(uploadStatus, `❌ Error: ${err.message}`, 'error');
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtnText.textContent = 'Upload & Process';
+      }
+    };
+
+    // Search form handler
+    searchForm.onsubmit = async (e) => {
+      e.preventDefault();
+      hideStatus(searchStatus);
+      resultsDiv.innerHTML = '';
+      
+      const query = document.getElementById('searchQuery').value;
+      
+      searchBtn.disabled = true;
+      searchBtnText.innerHTML = '<span class="loading"></span> Searching...';
+      
+      try {
+        const res = await fetch("/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+          if (data.results && data.results.length > 0) {
+            showStatus(searchStatus, `✅ Found ${data.results.length} relevant results`, 'success');
+            
+            resultsDiv.innerHTML = `<h3 style="margin-top: 20px; color: #667eea;">Search Results:</h3>` +
+              data.results.map((r, idx) => `
+                <div class="result-item">
+                  <div class="result-header">
+                    <strong>Result #${idx + 1}</strong>
+                    <span class="result-score">Score: ${(r.score * 100).toFixed(1)}%</span>
+                  </div>
+                  <div class="result-meta">
+                    📄 ${r.fileName || 'Unknown'} • Chunk ${r.chunkIndex !== undefined ? r.chunkIndex + 1 : '?'}
+                  </div>
+                  <div class="result-text">${r.text}</div>
+                </div>
+              `).join("");
+          } else {
+            resultsDiv.innerHTML = `
+              <div class="no-results">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <h3>No results found</h3>
+                <p>Try uploading some documents first or rephrase your query.</p>
+              </div>
+            `;
+          }
+        } else {
+          showStatus(searchStatus, `❌ Error: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        showStatus(searchStatus, `❌ Error: ${err.message}`, 'error');
+      } finally {
+        searchBtn.disabled = false;
+        searchBtnText.textContent = 'Search';
+      }
+    };
+
+    // Load stats
+    async function loadStats() {
+      try {
+        const res = await fetch("/stats");
+        const data = await res.json();
+        
+        document.getElementById('statPoints').textContent = data.pointsCount || 0;
+        document.getElementById('statVector').textContent = data.vectorSize || 384;
+        document.getElementById('statBackend').textContent = data.backend || 'Unknown';
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      }
+    }
+
+    // Load stats on page load
+    loadStats();
+
+    // Check health status
+    async function checkHealth() {
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        if (!data.modelLoaded) {
+          showStatus(searchStatus, '⏳ Embedding model is still loading, please wait...', 'info');
+        }
+      } catch (err) {
+        console.error('Health check failed:', err);
+      }
+    }
+
+    // Check health on load
+    checkHealth();
+
+    // Load documents
+    async function loadDocuments() {
+      try {
+        const res = await fetch("/documents");
+        const data = await res.json();
+        
+        if (data.documents && data.documents.length > 0) {
+          documentList.innerHTML = data.documents.map(doc => `
+            <div class="document-item" id="doc-${doc.id}">
+              <div class="document-header">
+                <div class="document-title">📄 ${doc.fileName}</div>
+                <div class="document-actions">
+                  <button class="btn-small btn-preview" onclick="togglePreview('${doc.id}')">Preview</button>
+                  <button class="btn-small btn-update" onclick="openUpdateModal('${doc.id}')">Update</button>
+                  <button class="btn-small btn-delete" onclick="deleteDocument('${doc.id}')">Delete</button>
+                </div>
+              </div>
+              <div class="document-meta">
+                📅 Uploaded: ${new Date(doc.uploadDate).toLocaleString()} | 
+                📊 ${doc.chunksCount} chunks | 
+                💾 ${(doc.fileSize / 1024).toFixed(2)} KB
+              </div>
+              <div id="preview-${doc.id}" class="document-preview"></div>
+            </div>
+          `).join('');
+        } else {
+          documentList.innerHTML = `
+            <div class="no-results">
+              <p>No documents uploaded yet. Upload a PDF to get started!</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Error loading documents:', err);
+        documentList.innerHTML = `<p style="color: #dc3545;">Error loading documents</p>`;
+      }
+    }
+
+    // Toggle document preview
+    async function togglePreview(docId) {
+      const previewDiv = document.getElementById(`preview-${docId}`);
+      
+      if (previewDiv.classList.contains('show')) {
+        previewDiv.classList.remove('show');
+        previewDiv.innerHTML = '';
+        return;
+      }
+
+      try {
+        previewDiv.innerHTML = '<p>Loading preview...</p>';
+        const res = await fetch(`/documents/${docId}`);
+        const data = await res.json();
+        
+        if (res.ok) {
+          previewDiv.innerHTML = `
+            <h4 style="margin-bottom: 15px; color: #667eea;">Document Preview (${data.chunks.length} chunks)</h4>
+            ${data.chunks.slice(0, 5).map(chunk => `
+              <div class="chunk-preview">
+                <div class="chunk-preview-header">Chunk ${chunk.index + 1}:</div>
+                <div>${chunk.text.substring(0, 300)}${chunk.text.length > 300 ? '...' : ''}</div>
+              </div>
+            `).join('')}
+            ${data.chunks.length > 5 ? `<p style="color: #666; font-style: italic;">...and ${data.chunks.length - 5} more chunks</p>` : ''}
+          `;
+          previewDiv.classList.add('show');
+        } else {
+          previewDiv.innerHTML = `<p style="color: #dc3545;">Error: ${data.error}</p>`;
+        }
+      } catch (err) {
+        previewDiv.innerHTML = `<p style="color: #dc3545;">Error loading preview</p>`;
+      }
+    }
+
+    // Delete document
+    async function deleteDocument(docId) {
+      if (!confirm('Are you sure you want to delete this document?')) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/documents/${docId}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          alert(`✅ ${data.message}`);
+          loadDocuments();
+          loadStats();
+        } else {
+          alert(`❌ Error: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`❌ Error: ${err.message}`);
+      }
+    }
+
+    // Open update modal
+    function openUpdateModal(docId) {
+      currentUpdateDocId = docId;
+      updateModal.classList.add('show');
+    }
+
+    // Close update modal
+    function closeUpdateModal() {
+      updateModal.classList.remove('show');
+      updateForm.reset();
+      currentUpdateDocId = null;
+    }
+
+    // Update document form handler
+    updateForm.onsubmit = async (e) => {
+      e.preventDefault();
+      
+      if (!currentUpdateDocId) {
+        alert('No document selected');
+        return;
+      }
+
+      try {
+        const formData = new FormData(updateForm);
+        const res = await fetch(`/documents/${currentUpdateDocId}`, {
+          method: 'PUT',
+          body: formData
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+          alert(`✅ ${data.message}\nUploaded ${data.chunksUploaded} chunks from "${data.fileName}"`);
+          closeUpdateModal();
+          loadDocuments();
+          loadStats();
+        } else {
+          alert(`❌ Error: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`❌ Error: ${err.message}`);
+      }
+    };
+
+    // Load documents on page load
+    loadDocuments();
+  </script>
+</body>
+</html>
