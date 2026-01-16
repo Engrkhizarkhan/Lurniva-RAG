@@ -126,6 +126,9 @@
       padding: 8px 15px;
       font-size: 0.85em;
     }
+    .quick-actions button.logout {
+      background: linear-gradient(135deg, #dc3545, #b02a37);
+    }
     
     .tooltip {
       cursor: help;
@@ -194,6 +197,7 @@
       <div class="quick-actions">
         <button onclick="checkHealth()">🔄 Refresh Status</button>
         <button onclick="clearAllOutputs()">🧹 Clear All</button>
+        <button class="logout" onclick="logout()">🚪 Logout</button>
       </div>
     </div>
 
@@ -324,6 +328,16 @@
 
   <script>
     const API_BASE = '/api/v1';
+
+    // Logout function
+    async function logout() {
+      try {
+        await fetch('/auth/logout', { method: 'POST' });
+        window.location.href = '/';
+      } catch (e) {
+        window.location.href = '/';
+      }
+    }
 
     // Helper function to display output
     function showOutput(elementId, data, isError = false) {

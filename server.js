@@ -18,6 +18,7 @@ import cors from "cors";
 import { pipeline, env } from "@xenova/transformers";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import cookieParser from "cookie-parser";
 
 // Load environment variables
 dotenv.config();
@@ -29,17 +30,125 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const API_VERSION = "1.0.0";
 
+// Auth Configuration
+const AUTH_USERNAME = process.env.AUTH_USERNAME || 'admin';
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin123';
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+// Store active sessions (in production, use Redis or similar)
+const activeSessions = new Map();
+
+// Generate session token
+function generateSessionToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  const sessionToken = req.cookies?.session;
+  
+  if (!sessionToken || !activeSessions.has(sessionToken)) {
+    // For API requests, return JSON error
+    if (req.path.startsWith('/api/')) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' }
+      });
+    }
+    // For page requests, redirect to login
+    return res.redirect('/');
+  }
+  
+  // Update session last activity
+  activeSessions.set(sessionToken, {
+    ...activeSessions.get(sessionToken),
+    lastActivity: Date.now()
+  });
+  
+  next();
+}
+
+// Clean up expired sessions (30 min timeout)
+setInterval(() => {
+  const now = Date.now();
+  const timeout = 30 * 60 * 1000; // 30 minutes
+  for (const [token, session] of activeSessions) {
+    if (now - session.lastActivity > timeout) {
+      activeSessions.delete(token);
+    }
+  }
+}, 60000); // Check every minute
+
 // Middleware
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
+app.use(cookieParser());
 
-// Serve static files from public folder
-app.use(express.static(path.join(process.cwd(), 'public')));
+// --------------------
+// Auth Routes
+// --------------------
 
-// Serve test.html at root
+// Login page (root)
 app.get('/', (req, res) => {
+  const sessionToken = req.cookies?.session;
+  if (sessionToken && activeSessions.has(sessionToken)) {
+    return res.redirect('/console');
+  }
+  res.sendFile(path.join(process.cwd(), 'public', 'login.html'));
+});
+
+// Login endpoint
+app.post('/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
+    const token = generateSessionToken();
+    activeSessions.set(token, {
+      username,
+      createdAt: Date.now(),
+      lastActivity: Date.now()
+    });
+    
+    res.cookie('session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 60 * 1000 // 30 minutes
+    });
+    
+    return res.json({ success: true, data: { message: 'Login successful' } });
+  }
+  
+  res.status(401).json({
+    success: false,
+    error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password' }
+  });
+});
+
+// Check auth status
+app.get('/auth/check', (req, res) => {
+  const sessionToken = req.cookies?.session;
+  const authenticated = sessionToken && activeSessions.has(sessionToken);
+  res.json({ authenticated });
+});
+
+// Logout
+app.post('/auth/logout', (req, res) => {
+  const sessionToken = req.cookies?.session;
+  if (sessionToken) {
+    activeSessions.delete(sessionToken);
+  }
+  res.clearCookie('session');
+  res.json({ success: true, data: { message: 'Logged out' } });
+});
+
+// Protected console route
+app.get('/console', requireAuth, (req, res) => {
   res.sendFile(path.join(process.cwd(), 'public', 'test.html'));
 });
+
+// Serve static files (but not test.html directly)
+app.use('/static', express.static(path.join(process.cwd(), 'public')));
 
 // --------------------
 // Multer Configuration (PDF uploads)
@@ -930,5 +1039,6 @@ app.listen(PORT, () => {
   console.log(`  Lurniva RAG Microservice API v${API_VERSION}`);
   console.log(`  Port: ${PORT}`);
   console.log(`  Base URL: http://localhost:${PORT}/api/v1`);
+  console.log(`  Auth: Enabled (Username: ${AUTH_USERNAME})`);
   console.log(`${'='.repeat(50)}\n`);
 });
