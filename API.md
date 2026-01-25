@@ -3,6 +3,8 @@
 **Version:** 1.0.0  
 **Base URL:** `http://localhost:3000/api/v1`
 
+**New:** 🎨 **AI Visual Generation** | 📚 **Enhanced Lectures** | 🤖 **Smart Tutoring**
+
 ---
 
 ## Quick Start
@@ -13,7 +15,7 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your Qdrant URL
+# Edit .env with your OpenAI API key for visual generation
 
 # 3. Start the server
 npm start
@@ -23,6 +25,11 @@ npm start
 # 5. Upload a book
 curl -X POST http://localhost:3000/api/v1/books/upload \
   -F "file=@./mybook.pdf"
+
+# 6. Generate a lecture with AI visuals
+curl -X POST http://localhost:3000/api/v1/lecture/generate \
+  -H "Content-Type: application/json" \
+  -d '{"book_id":"YOUR_BOOK_ID","class_no":"10","board":"CBSE","subject":"Physics"}'
 ```
 
 ---
@@ -36,6 +43,29 @@ A built-in test console is available at `http://localhost:3000/` for testing all
 ## Authentication
 
 This microservice does not include built-in authentication. Implement authentication in your API gateway or reverse proxy.
+
+---
+
+## 🚀 New Features
+
+### AI-Powered Visual Generation
+- **DALL-E 3 Integration**: Automatically generates educational images and diagrams
+- **Smart Charts**: AI creates realistic educational data for charts and graphs  
+- **Interactive Elements**: Specifications for quizzes, exercises, and activities
+- **Curriculum Aligned**: All visuals are optimized for specific class and subject
+
+### Enhanced Lecture Generation
+- **Complete Visual Assets**: Returns actual image URLs, chart data, and interactive specs
+- **Multiple Lecture Styles**: Comprehensive, concise, interactive, visual, practical
+- **Real-time Generation**: Images and charts generated during API call
+- **Fallback Support**: Graceful handling when visual generation fails
+- **Microservice Ready**: Perfect JSON structure for dashboard integration
+
+### Advanced Tutoring
+- **Context-Aware Responses**: AI tutor uses actual textbook content
+- **Search + Ask**: Automatically finds relevant content and provides answers
+- **HTML Formatted**: Clean, educational responses ready for display
+- **Metadata Rich**: Complete tracking of sources and processing
 
 ---
 
@@ -483,7 +513,7 @@ GET /api/v1/stats
 | POST | `/api/v1/search` | Search documents |
 | POST | `/api/v1/tutor/ask` | AI Tutor with provided chunks |
 | POST | `/api/v1/tutor/search-and-ask` | Search + AI Tutor combined |
-| POST | `/api/v1/lecture/generate` | Generate comprehensive lectures |
+| POST | `/api/v1/lecture/generate` | Generate lectures with AI-generated visuals |
 
 ---
 
@@ -533,6 +563,18 @@ CREATE TABLE books (
 | LIST_ERROR | 500 | Failed to list books |
 | STATS_ERROR | 500 | Failed to get statistics |
 | INTERNAL_ERROR | 500 | Unhandled server error |
+| **MISSING_BOOK_ID** | **400** | **book_id parameter required for lecture generation** |
+| **MISSING_METADATA** | **400** | **class_no, board, and subject are required** |
+| **OPENAI_NOT_CONFIGURED** | **503** | **OpenAI API key not configured** |
+| **INVALID_API_KEY** | **401** | **Invalid OpenAI API key** |
+| **RATE_LIMITED** | **429** | **OpenAI API rate limit exceeded** |
+| **INVALID_REQUEST** | **400** | **Invalid request to OpenAI API** |
+| **OPENAI_ERROR** | **500** | **OpenAI API error** |
+| **TUTOR_ERROR** | **500** | **AI tutor processing error** |
+| **SEARCH_ASK_ERROR** | **500** | **Search and ask operation failed** |
+| **VISUAL_GENERATION_FAILED** | **206** | **Lecture generated but some visuals failed** |
+| **IMAGE_GENERATION_ERROR** | **500** | **DALL-E image generation failed** |
+| **CHART_GENERATION_ERROR** | **500** | **Chart data generation failed** |
 
 ---
 
@@ -1041,14 +1083,22 @@ If text extraction fails:
 
 ---
 
-### Lecture Generation
+### Lecture Generation with AI Visuals
 
-Generate comprehensive, structured lectures from book content with visual elements and educational formatting.
+Generate comprehensive, structured lectures from book content with **real AI-generated images, charts, and interactive elements**. This endpoint not only creates educational content but also generates actual visual assets using DALL-E 3 and GPT-4.
 
 ```
 POST /api/v1/lecture/generate
 Content-Type: application/json
 ```
+
+#### Key Features
+
+🎨 **AI Image Generation** - Real images created via DALL-E 3  
+📊 **Smart Charts** - Data-driven charts with realistic educational data  
+🎯 **Interactive Elements** - Quiz and exercise specifications  
+📚 **Curriculum Aligned** - Content matches specific board and class requirements  
+🖼️ **Visual Assets Included** - Complete visual data in API response  
 
 #### Request Body
 
@@ -1056,15 +1106,23 @@ Content-Type: application/json
 |-------|------|----------|---------|-------------|
 | book_id | string | Yes | - | UUID of the book to generate lecture from |
 | class_no | string | Yes | - | Class/grade number (e.g., "10", "12") |
-| board | string | Yes | - | Education board (e.g., "CBSE", "NCERT") |
-| subject | string | Yes | - | Subject name (e.g., "Physics", "Biology") |
+| board | string | Yes | - | Education board (e.g., "CBSE", "NCERT", "ICSE") |
+| subject | string | Yes | - | Subject name (e.g., "Physics", "Biology", "Mathematics") |
 | topic | string | No | "Auto-detected" | Specific topic to focus on |
-| chunk_limit | number | No | 10 | Number of chunks to use for content |
+| chunk_limit | number | No | 10 | Number of content chunks to use (1-50) |
 | chunk_offset | number | No | 0 | Starting position in book chunks |
-| model | string | No | "gpt-4o-mini" | OpenAI model to use |
-| max_tokens | number | No | 3000 | Maximum response tokens |
-| include_visuals | boolean | No | true | Include visual element placeholders |
-| lecture_style | string | No | "comprehensive" | Style: comprehensive, concise, interactive |
+| model | string | No | "gpt-4o-mini" | OpenAI model: gpt-4o-mini, gpt-4o, gpt-3.5-turbo |
+| max_tokens | number | No | 3000 | Maximum response tokens (2000-6000) |
+| include_visuals | boolean | No | true | Generate AI images and charts |
+| lecture_style | string | No | "comprehensive" | comprehensive, concise, interactive, visual, practical |
+
+#### Lecture Styles
+
+- **comprehensive**: Detailed explanations with examples and theory
+- **concise**: Focused, essential content only  
+- **interactive**: Heavy on quizzes, exercises, and student engagement
+- **visual**: Emphasis on diagrams, charts, and visual learning
+- **practical**: Real-world applications and hands-on examples
 
 #### cURL Example
 
@@ -1075,70 +1133,194 @@ curl -X POST http://localhost:3000/api/v1/lecture/generate \
     "book_id": "550e8400-e29b-41d4-a716-446655440000",
     "class_no": "10",
     "board": "CBSE",
-    "subject": "Physics",
-    "topic": "Laws of Motion",
-    "chunk_limit": 8,
+    "subject": "Biology",
+    "topic": "Photosynthesis",
+    "chunk_limit": 12,
     "chunk_offset": 0,
     "include_visuals": true,
-    "lecture_style": "comprehensive"
+    "lecture_style": "visual"
   }'
 ```
 
-#### Response (201 Created)
+#### Enhanced Response (201 Created)
 
 ```json
 {
   "success": true,
   "data": {
-    "lecture_content": "<h1>Laws of Motion</h1><h2>Learning Objectives</h2><ul><li>Understand Newton's three laws...</li></ul><div class=\"diagram\" data-type=\"concept-map\" data-title=\"Forces and Motion\">Diagram showing relationship between force, mass, and acceleration</div>...",
+    "lecture_content": "<h1>Photosynthesis - The Life Process</h1>\n<div class=\"learning-objectives\">\n<h3>🎯 Learning Objectives</h3>\n<ul><li>Understand the process of photosynthesis</li></ul>\n</div>\n<div class=\"generated-image\" style=\"margin: 20px 0; text-align: center;\">\n<img src=\"https://oaidalleapiprodscus.blob.core.windows.net/private/org-abc123/user-def456/img-xyz789.png?st=2026-01-25T15%3A30%3A00Z&se=2026-01-25T17%3A30%3A00Z&sp=r&sv=2021-08-06&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48ccc7e-e0da-4e9f-8c69-7e62d9e8d432&skt=2026-01-25T09%3A30%3A15Z&ske=2026-01-26T09%3A30%3A15Z&sks=b&skv=2021-08-06&sig=xyz123...\" alt=\"Cross-section diagram of a leaf showing chloroplasts, stomata, and the photosynthesis process\" style=\"max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);\">\n<p class=\"image-caption\" style=\"font-size: 0.9em; color: #666; margin-top: 8px;\">Cross-section diagram of a leaf showing chloroplasts, stomata, and the photosynthesis process</p>\n</div>\n<h2>The Photosynthesis Equation</h2>\n<div class=\"chart-container\" data-chart='{\"type\":\"bar\",\"title\":\"Factors Affecting Photosynthesis Rate\",\"data\":{\"labels\":[\"Light Intensity\",\"CO2 Concentration\",\"Temperature\",\"Water Availability\"],\"datasets\":[{\"label\":\"Effect on Rate (%)\",\"data\":[85,70,60,90],\"backgroundColor\":[\"#FF6384\",\"#36A2EB\",\"#FFCE56\",\"#4BC0C0\"]}]},\"description\":\"This chart shows how different environmental factors influence the rate of photosynthesis in plants.\"}' style=\"margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px;\">\n<h4 style=\"margin-bottom: 15px; color: #333;\">Factors Affecting Photosynthesis Rate</h4>\n<div class=\"chart-placeholder\" style=\"height: 300px; background: white; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #666; flex-direction: column;\">\n<div>📊 Factors Affecting Photosynthesis Rate</div>\n<small style=\"margin-top: 10px;\">Chart data available in API response</small>\n</div>\n<p style=\"font-size: 0.9em; color: #666; margin-top: 10px;\">This chart shows how different environmental factors influence the rate of photosynthesis in plants.</p>\n</div>",
+    
+    "visual_assets": [
+      {
+        "type": "image",
+        "description": "Cross-section diagram of a leaf showing chloroplasts, stomata, and the photosynthesis process",
+        "data": {
+          "url": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-abc123/user-def456/img-xyz789.png?st=2026-01-25T15%3A30%3A00Z&se=2026-01-25T17%3A30%3A00Z&sp=r&sv=2021-08-06&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48ccc7e-e0da-4e9f-8c69-7e62d9e8d432&skt=2026-01-25T09%3A30%3A15Z&ske=2026-01-26T09%3A30%3A15Z&sks=b&skv=2021-08-06&sig=xyz123...",
+          "description": "Cross-section diagram of a leaf showing chloroplasts, stomata, and the photosynthesis process",
+          "prompt_used": "Educational illustration for Class 10 Biology: Cross-section diagram of a leaf showing chloroplasts, stomata, and the photosynthesis process. Style: clean, educational, suitable for textbooks, clear labels, appropriate for students aged 15."
+        },
+        "id": "img_1"
+      },
+      {
+        "type": "chart",
+        "description": "Bar chart showing factors affecting photosynthesis rate",
+        "data": {
+          "type": "bar",
+          "title": "Factors Affecting Photosynthesis Rate",
+          "data": {
+            "labels": ["Light Intensity", "CO2 Concentration", "Temperature", "Water Availability"],
+            "datasets": [{
+              "label": "Effect on Rate (%)",
+              "data": [85, 70, 60, 90],
+              "backgroundColor": ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0"]
+            }]
+          },
+          "description": "This chart shows how different environmental factors influence the rate of photosynthesis in plants."
+        },
+        "id": "chart_1"
+      },
+      {
+        "type": "interactive",
+        "description": "Quiz on photosynthesis process and factors",
+        "data": {
+          "activity_type": "quiz",
+          "description": "Quiz on photosynthesis process and factors",
+          "suggestions": [
+            "Create multiple choice questions",
+            "Add interactive elements",
+            "Include student engagement activities"
+          ]
+        },
+        "id": "interactive_1"
+      }
+    ],
+    
     "metadata": {
       "book_id": "550e8400-e29b-41d4-a716-446655440000",
-      "book_title": "physics_class10.pdf", 
+      "book_title": "biology_class10_cbse.pdf",
       "class_no": "10",
       "board": "CBSE",
-      "subject": "Physics",
-      "topic": "Laws of Motion",
+      "subject": "Biology",
+      "topic": "Photosynthesis",
       "chunks_used": {
         "total_available": 45,
-        "used_count": 8,
+        "used_count": 12,
         "start_index": 1,
-        "end_index": 8,
+        "end_index": 12,
         "offset": 0,
-        "limit": 8
+        "limit": 12
       },
       "content_stats": {
-        "total_characters": 4850,
-        "estimated_reading_time_minutes": 5,
-        "sections_covered": 8
+        "total_characters": 6850,
+        "estimated_reading_time_minutes": 7,
+        "sections_covered": 12
+      },
+      "visual_summary": {
+        "total_visual_elements": 3,
+        "images_generated": 1,
+        "diagrams_generated": 0,
+        "charts_created": 1,
+        "interactive_elements": 1
       },
       "generation_settings": {
         "model_used": "gpt-4o-mini",
         "max_tokens": 3000,
-        "lecture_style": "comprehensive",
+        "lecture_style": "visual",
         "include_visuals": true,
         "tokens_used": {
-          "prompt_tokens": 1200,
-          "completion_tokens": 2800,
-          "total_tokens": 4000
+          "prompt_tokens": 1450,
+          "completion_tokens": 2100,
+          "total_tokens": 3550,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "accepted_prediction_tokens": 0,
+            "rejected_prediction_tokens": 0
+          }
         },
-        "response_time_ms": 3200
+        "response_time_ms": 4750
       },
-      "timestamp": "2026-01-25T11:00:00.000Z"
+      "timestamp": "2026-01-25T15:30:45.123Z"
     }
   }
 }
 ```
 
-#### Visual Elements
+#### Visual Assets Integration
 
-The lecture includes HTML placeholders for educational visuals:
+The API returns complete visual assets that your frontend can use:
 
-- **Diagrams**: `<div class="diagram" data-type="concept-map" data-title="Title">Description</div>`
-- **Charts**: `<div class="chart" data-type="bar" data-title="Title">Data description</div>`  
-- **Images**: `<div class="image" data-type="illustration" data-title="Title">Description</div>`
-- **Interactive**: `<div class="interactive" data-type="quiz" data-title="Title">Activity</div>`
+**1. AI-Generated Images**
+```javascript
+// Access generated images
+response.data.visual_assets.filter(asset => asset.type === 'image').forEach(image => {
+  console.log('Image URL:', image.data.url);
+  console.log('Description:', image.description);
+  // Use image.data.url directly in your <img> tags
+});
+```
+
+**2. Chart Data**
+```javascript
+// Use with Chart.js, D3.js, or other charting libraries
+const chartAssets = response.data.visual_assets.filter(asset => asset.type === 'chart');
+chartAssets.forEach(chart => {
+  new Chart(ctx, {
+    type: chart.data.type,
+    data: chart.data.data,
+    options: { responsive: true }
+  });
+});
+```
+
+**3. Interactive Elements**
+```javascript
+// Create interactive components
+const interactive = response.data.visual_assets.filter(asset => asset.type === 'interactive');
+interactive.forEach(element => {
+  // Implement based on element.data.activity_type (quiz, exercise, etc.)
+});
+```
+
+#### Visual Element Types
+
+| Type | Generated Content | Use Case |
+|------|------------------|----------|
+| **📸 Images** | DALL-E 3 generated educational illustrations | Diagrams, processes, structures |
+| **📊 Charts** | AI-generated realistic data for visualization | Statistics, comparisons, trends |
+| **📋 Diagrams** | Educational process flows and concept maps | Workflows, relationships, systems |
+| **🎯 Interactive** | Quiz and exercise specifications | Student engagement, assessments |
+
+#### Error Handling
+
+Visual generation failures are handled gracefully:
+
+```json
+{
+  "type": "image",
+  "data": {
+    "url": null,
+    "error": "Rate limit exceeded",
+    "fallback_text": "[Image: Cell structure diagram]"
+  }
+}
+```
+
+#### Integration Benefits
+
+✅ **Ready-to-Use Visuals** - No additional image generation needed  
+✅ **Educational Quality** - AI-optimized for specific class and subject  
+✅ **Complete Data** - Everything needed for frontend implementation  
+✅ **Fallback Support** - Graceful handling of generation failures  
+✅ **Microservice Ready** - Perfect for dashboard integration  
 
 ---
+
+### Tutor API Endpoints
 
 ## Support
 
