@@ -537,6 +537,228 @@ async function generateEmbedding(text) {
   return Array.from(output.data);
 }
 
+// Generate AI Images using DALL-E
+async function generateAIImage(description, subject, classNo) {
+  try {
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const enhancedPrompt = `Educational illustration for Class ${classNo} ${subject}: ${description}. Style: clean, educational, suitable for textbooks, clear labels, appropriate for students aged ${getAgeRange(classNo)}.`;
+
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: enhancedPrompt,
+      size: "1024x1024",
+      quality: "standard",
+      n: 1,
+    });
+
+    return {
+      url: response.data[0].url,
+      description: description,
+      prompt_used: enhancedPrompt
+    };
+  } catch (error) {
+    console.warn(`Image generation failed: ${error.message}`);
+    return {
+      url: null,
+      description: description,
+      error: error.message,
+      fallback_text: `[Image: ${description}]`
+    };
+  }
+}
+
+// Generate Chart Data
+async function generateChartData(description, subject) {
+  try {
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const chartPrompt = `Generate realistic educational chart data for: ${description}. 
+    Subject: ${subject}
+    Return ONLY a JSON object with this structure:
+    {
+      "type": "bar|line|pie|scatter",
+      "title": "Chart Title",
+      "data": {
+        "labels": ["Label1", "Label2", ...],
+        "datasets": [{
+          "label": "Dataset Label",
+          "data": [10, 20, 30, ...],
+          "backgroundColor": ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF"]
+        }]
+      },
+      "description": "Educational explanation of the chart"
+    }`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are a data visualization expert for educational content. Generate realistic chart data in JSON format only." },
+        { role: "user", content: chartPrompt }
+      ],
+      max_tokens: 500,
+      temperature: 0.3
+    });
+
+    const chartData = JSON.parse(response.choices[0].message.content);
+    return chartData;
+  } catch (error) {
+    console.warn(`Chart generation failed: ${error.message}`);
+    return {
+      type: "bar",
+      title: "Chart Data",
+      error: error.message,
+      fallback_text: `[Chart: ${description}]`
+    };
+  }
+}
+
+// Get age range for class
+function getAgeRange(classNo) {
+  const classNum = parseInt(classNo);
+  return classNum + 5; // Approximate age
+}
+
+// Process visual elements in lecture content
+async function processVisualElements(lectureContent, subject, classNo, includeVisuals) {
+  if (!includeVisuals) {
+    return {
+      content: lectureContent,
+      visual_assets: []
+    };
+  }
+
+  const visualAssets = [];
+  let processedContent = lectureContent;
+
+  // Find all visual element patterns
+  const imageMatches = lectureContent.match(/\{\{IMAGE: ([^}]+)\}\}/g) || [];
+  const diagramMatches = lectureContent.match(/\{\{DIAGRAM: ([^}]+)\}\}/g) || [];
+  const chartMatches = lectureContent.match(/\{\{CHART: ([^}]+)\}\}/g) || [];
+  const interactiveMatches = lectureContent.match(/\{\{INTERACTIVE: ([^}]+)\}\}/g) || [];
+
+  // Process Images
+  for (const match of imageMatches) {
+    const description = match.replace(/\{\{IMAGE: /, '').replace(/\}\}/, '');
+    const imageData = await generateAIImage(description, subject, classNo);
+    
+    visualAssets.push({
+      type: 'image',
+      description: description,
+      data: imageData,
+      id: `img_${visualAssets.length + 1}`
+    });
+
+    // Replace in content with structured HTML
+    const imageHtml = imageData.url 
+      ? `<div class="generated-image" style="margin: 20px 0; text-align: center;">
+          <img src="${imageData.url}" alt="${description}" style="max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <p class="image-caption" style="font-size: 0.9em; color: #666; margin-top: 8px;">${description}</p>
+        </div>`
+      : `<div class="image-placeholder" style="border: 2px dashed #ccc; padding: 20px; text-align: center; background: #f8f9fa; margin: 20px 0;">
+          <p>🖼️ ${imageData.fallback_text}</p>
+          <small style="color: #666;">Image generation unavailable: ${imageData.error}</small>
+        </div>`;
+    
+    processedContent = processedContent.replace(match, imageHtml);
+  }
+
+  // Process Charts
+  for (const match of chartMatches) {
+    const description = match.replace(/\{\{CHART: /, '').replace(/\}\}/, '');
+    const chartData = await generateChartData(description, subject);
+    
+    visualAssets.push({
+      type: 'chart',
+      description: description,
+      data: chartData,
+      id: `chart_${visualAssets.length + 1}`
+    });
+
+    // Replace in content with chart configuration
+    const chartHtml = chartData.data 
+      ? `<div class="chart-container" data-chart='${JSON.stringify(chartData)}' style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+          <h4 style="margin-bottom: 15px; color: #333;">${chartData.title}</h4>
+          <div class="chart-placeholder" style="height: 300px; background: white; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #666; flex-direction: column;">
+            <div>📊 ${chartData.title}</div>
+            <small style="margin-top: 10px;">Chart data available in API response</small>
+          </div>
+          ${chartData.description ? `<p style="font-size: 0.9em; color: #666; margin-top: 10px;">${chartData.description}</p>` : ''}
+        </div>`
+      : `<div class="chart-error" style="border: 2px dashed #ffc107; padding: 20px; background: #fff8e1; color: #856404; margin: 20px 0;">
+          📊 ${chartData.fallback_text}
+        </div>`;
+    
+    processedContent = processedContent.replace(match, chartHtml);
+  }
+
+  // Process Diagrams (similar to images but optimized for diagrams)
+  for (const match of diagramMatches) {
+    const description = match.replace(/\{\{DIAGRAM: /, '').replace(/\}\}/, '');
+    const diagramData = await generateAIImage(`Educational diagram: ${description}`, subject, classNo);
+    
+    visualAssets.push({
+      type: 'diagram',
+      description: description,
+      data: diagramData,
+      id: `diagram_${visualAssets.length + 1}`
+    });
+
+    const diagramHtml = diagramData.url 
+      ? `<div class="diagram-container" style="margin: 20px 0; text-align: center;">
+          <img src="${diagramData.url}" alt="${description}" style="max-width: 100%; border: 1px solid #ddd; border-radius: 8px;">
+          <p class="diagram-caption" style="font-size: 0.9em; color: #666; margin-top: 8px;"><strong>Diagram:</strong> ${description}</p>
+        </div>`
+      : `<div class="diagram-placeholder" style="border: 2px dashed #007bff; padding: 20px; text-align: center; background: #f0f8ff; margin: 20px 0;">
+          <p>📊 ${diagramData.fallback_text}</p>
+          <small style="color: #666;">Diagram generation unavailable: ${diagramData.error}</small>
+        </div>`;
+    
+    processedContent = processedContent.replace(match, diagramHtml);
+  }
+
+  // Process Interactive Elements
+  for (const match of interactiveMatches) {
+    const description = match.replace(/\{\{INTERACTIVE: /, '').replace(/\}\}/, '');
+    
+    visualAssets.push({
+      type: 'interactive',
+      description: description,
+      data: {
+        activity_type: description.toLowerCase().includes('quiz') ? 'quiz' : 'exercise',
+        description: description,
+        suggestions: [
+          "Create multiple choice questions",
+          "Add interactive elements", 
+          "Include student engagement activities"
+        ]
+      },
+      id: `interactive_${visualAssets.length + 1}`
+    });
+
+    const interactiveHtml = `<div class="interactive-element" style="border: 2px solid #28a745; background: #f8fff9; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h4 style="color: #28a745; margin-bottom: 10px;">🎯 Interactive Activity</h4>
+        <p><strong>${description}</strong></p>
+        <div style="margin-top: 15px; padding: 15px; background: white; border: 1px dashed #28a745; border-radius: 5px;">
+          <small style="color: #666;">💡 Interactive element - implement in your frontend dashboard</small>
+        </div>
+      </div>`;
+    
+    processedContent = processedContent.replace(match, interactiveHtml);
+  }
+
+  return {
+    content: processedContent,
+    visual_assets: visualAssets
+  };
+}
+
 // Chunk text
 function chunkText(text, chunkSize = 600, overlap = 100) {
   const chunks = [];
@@ -1511,6 +1733,244 @@ ${question}
     res.status(500).json({
       success: false,
       error: { code: "SEARCH_ASK_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/lecture/generate
+ * Generate comprehensive lecture content from book chunks
+ */
+app.post("/api/v1/lecture/generate", async (req, res) => {
+  try {
+    const { 
+      book_id,
+      class_no, 
+      board, 
+      subject,
+      topic,
+      chunk_limit = 10,
+      chunk_offset = 0,
+      model = "gpt-4o-mini",
+      max_tokens = 3000,
+      include_visuals = true,
+      lecture_style = "comprehensive" // comprehensive, concise, interactive
+    } = req.body;
+
+    // Validation
+    if (!book_id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_BOOK_ID", message: "book_id is required" }
+      });
+    }
+
+    if (!class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "class_no, board, and subject are required" }
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "OPENAI_NOT_CONFIGURED", message: "OpenAI API key not configured" }
+      });
+    }
+
+    console.log(`\n📚 Lecture Generation Request:`);
+    console.log(`   Book ID: ${book_id}`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Topic: ${topic || 'Auto-detected from content'}`);
+    console.log(`   Chunks: ${chunk_limit} (offset: ${chunk_offset})`);
+
+    // Step 1: Get book information
+    const bookInfo = await getBookInfo(book_id);
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "BOOK_NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    // Step 2: Get book chunks with pagination
+    const allChunks = await getBookChunks(book_id);
+    const totalChunks = allChunks.length;
+    
+    if (totalChunks === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NO_CONTENT", message: "No content found for this book" }
+      });
+    }
+
+    // Apply pagination
+    const startIndex = chunk_offset;
+    const endIndex = Math.min(startIndex + chunk_limit, totalChunks);
+    const selectedChunks = allChunks.slice(startIndex, endIndex);
+
+    if (selectedChunks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_PAGINATION", message: "No chunks found for given offset and limit" }
+      });
+    }
+
+    // Step 3: Prepare content for lecture generation
+    const contentText = selectedChunks.map((chunk, index) => {
+      const actualIndex = startIndex + index + 1;
+      return `Section ${actualIndex}:\n${chunk.text}`;
+    }).join('\n\n');
+
+    // Step 4: Create comprehensive lecture prompt
+    const lecturePrompt = `You are an expert educator creating a comprehensive lecture for ${subject} (Class ${class_no}, ${board} Board).
+
+TASK: Generate a complete, engaging lecture based on the provided textbook content.
+
+CONTENT TO COVER:
+${contentText}
+
+REQUIREMENTS:
+1. Create a structured lecture with clear sections and subsections
+2. Use appropriate HTML formatting (h1, h2, h3, p, ul, ol, li, strong, em, blockquote)
+3. Add educational elements: definitions, examples, key points, summaries
+4. Make it engaging and age-appropriate for Class ${class_no} students
+5. Follow ${board} curriculum standards
+6. Provide clear explanations with real-world applications
+
+${include_visuals ? `
+VISUAL ELEMENTS TO INCLUDE:
+When you want to include visual elements, use this EXACT format:
+- For Images: {{IMAGE: [detailed description for image generation]}}
+- For Diagrams: {{DIAGRAM: [detailed description of diagram/flowchart needed]}}  
+- For Charts: {{CHART: [chart type and data description]}}
+- For Interactive: {{INTERACTIVE: [quiz/exercise description]}}
+
+Example: {{IMAGE: A detailed cross-section diagram of a plant cell showing chloroplasts, nucleus, cell wall, and vacuoles for Class ${class_no} ${subject} students}}
+` : ''}
+
+LECTURE STRUCTURE:
+1. Introduction & Learning Objectives
+2. Main Content (organized by topics/subtopics)
+3. Key Concepts & Definitions
+4. Examples & Applications
+5. Summary & Conclusion
+6. Review Questions
+
+${topic ? `FOCUS TOPIC: "${topic}" - Ensure this topic gets special emphasis in the lecture.` : ''}
+
+STYLE: ${lecture_style === 'comprehensive' ? 'Detailed explanations with examples' : 
+         lecture_style === 'concise' ? 'Concise but complete coverage' : 
+         'Interactive with engaging activities'}
+
+Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean HTML.`;
+
+    console.log(`   Generating lecture from ${selectedChunks.length} chunks...`);
+
+    // Step 5: Call OpenAI API
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const startTime = Date.now();
+    
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert educator specializing in ${subject} for ${board} board. Create engaging, curriculum-aligned lectures in HTML format only. Always include visual placeholders and interactive elements to enhance learning.`
+        },
+        {
+          role: "user",
+          content: lecturePrompt
+        }
+      ],
+      max_tokens: max_tokens,
+      temperature: 0.4, // Balanced creativity for educational content
+    });
+
+    const responseTime = Date.now() - startTime;
+    const lectureContent = completion.choices[0].message.content;
+    const tokensUsed = completion.usage;
+
+    console.log(`   ✓ Lecture generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+
+    // Step 6: Process visual elements if enabled
+    console.log(`   Processing visual elements...`);
+    const processedResult = await processVisualElements(lectureContent, subject, class_no, include_visuals);
+    const finalLectureContent = processedResult.content;
+    const visualAssets = processedResult.visual_assets;
+
+    console.log(`   ✓ Visual processing complete (${visualAssets.length} elements)`);
+
+    // Step 7: Return comprehensive response with visual assets
+    res.json({
+      success: true,
+      data: {
+        lecture_content: finalLectureContent,
+        visual_assets: visualAssets,
+        metadata: {
+          book_id: book_id,
+          book_title: bookInfo.title || bookInfo.file_name,
+          class_no: class_no,
+          board: board,
+          subject: subject,
+          topic: topic || "Generated from book content",
+          chunks_used: {
+            total_available: totalChunks,
+            used_count: selectedChunks.length,
+            start_index: startIndex + 1,
+            end_index: endIndex,
+            offset: chunk_offset,
+            limit: chunk_limit
+          },
+          content_stats: {
+            total_characters: contentText.length,
+            estimated_reading_time_minutes: Math.ceil(contentText.length / 1000), // ~1000 chars per minute
+            sections_covered: selectedChunks.length
+          },
+          visual_summary: {
+            total_visual_elements: visualAssets.length,
+            images_generated: visualAssets.filter(v => v.type === 'image').length,
+            diagrams_generated: visualAssets.filter(v => v.type === 'diagram').length,
+            charts_created: visualAssets.filter(v => v.type === 'chart').length,
+            interactive_elements: visualAssets.filter(v => v.type === 'interactive').length
+          },
+          generation_settings: {
+            model_used: model,
+            max_tokens: max_tokens,
+            lecture_style: lecture_style,
+            include_visuals: include_visuals,
+            tokens_used: tokensUsed,
+            response_time_ms: responseTime
+          },
+          timestamp: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Lecture generation error:", err);
+    
+    // Handle OpenAI specific errors
+    if (err.status === 401) {
+      return res.status(401).json({
+        success: false,
+        error: { code: "INVALID_API_KEY", message: "Invalid OpenAI API key" }
+      });
+    } else if (err.status === 429) {
+      return res.status(429).json({
+        success: false,
+        error: { code: "RATE_LIMITED", message: "OpenAI API rate limit exceeded" }
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: { code: "LECTURE_GENERATION_ERROR", message: err.message }
     });
   }
 });

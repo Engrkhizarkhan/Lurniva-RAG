@@ -322,6 +322,90 @@
         <div class="output" id="getBookOutput"></div>
       </div>
 
+      <!-- Lecture Generation -->
+      <div class="card">
+        <h2><span class="method post">POST</span> Generate Educational Lecture</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/lecture/generate</p>
+        
+        <div class="form-group">
+          <label>Book ID <span style="color: red;">*</span></label>
+          <input type="text" id="lectureBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        
+        <div class="form-group">
+          <label>Specific Topic (Optional)</label>
+          <input type="text" id="lectureTopic" placeholder="e.g., Photosynthesis, Newton's Laws, Chemical Bonding">
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Class <span style="color: red;">*</span></label>
+            <input type="text" id="lectureClass" placeholder="e.g., 10">
+          </div>
+          <div style="flex: 1;">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="lectureBoard" placeholder="e.g., CBSE">
+          </div>
+          <div style="flex: 1;">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="lectureSubject" placeholder="e.g., Physics">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Content Chunks Limit <span class="tooltip" title="Number of text sections to retrieve from the book for lecture generation. More chunks = more comprehensive content but slower generation.">ℹ️</span></label>
+            <input type="number" id="lectureLimit" value="10" min="1" max="50">
+          </div>
+          <div style="flex: 1;">
+            <label>Content Offset <span class="tooltip" title="Skip this many chunks from the beginning. Use to focus on specific parts of the book.">ℹ️</span></label>
+            <input type="number" id="lectureOffset" value="0" min="0">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>AI Model</label>
+            <select id="lectureModel">
+              <option value="gpt-4o-mini">GPT-4o Mini (Fast)</option>
+              <option value="gpt-4o">GPT-4o (Best Quality)</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label>Lecture Style</label>
+            <select id="lectureStyle">
+              <option value="comprehensive">Comprehensive</option>
+              <option value="concise">Concise</option>
+              <option value="interactive">Interactive</option>
+              <option value="visual">Visual-Heavy</option>
+              <option value="practical">Practical</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Max Response Length</label>
+            <select id="lectureMaxTokens">
+              <option value="2000">2000 tokens (Short)</option>
+              <option value="3000" selected>3000 tokens (Medium)</option>
+              <option value="4000">4000 tokens (Long)</option>
+              <option value="6000">6000 tokens (Detailed)</option>
+            </select>
+          </div>
+          <div style="flex: 1; display: flex; align-items: end;">
+            <label style="display: flex; align-items: center; cursor: pointer; padding: 10px; background: rgba(40, 167, 69, 0.1); border-radius: 6px; margin-top: 22px; width: 100%;">
+              <input type="checkbox" id="lectureVisuals" checked style="margin-right: 8px;">
+              Include visual elements
+            </label>
+          </div>
+        </div>
+        
+        <button onclick="generateLecture()">🎓 Generate Educational Lecture</button>
+        <div class="output" id="lectureOutput"></div>
+      </div>
+
       <!-- Delete Book -->
       <div class="card">
         <h2><span class="method delete">DELETE</span> Delete Book</h2>
@@ -750,6 +834,103 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         showOutput('searchAskOutput', data, !data.success);
       } catch (e) {
         showOutput('searchAskOutput', { error: e.message }, true);
+      }
+    }
+
+    // Generate Lecture
+    async function generateLecture() {
+      const bookId = document.getElementById('lectureBookId').value.trim();
+      const topic = document.getElementById('lectureTopic').value.trim();
+      const classNo = document.getElementById('lectureClass').value.trim();
+      const board = document.getElementById('lectureBoard').value.trim();
+      const subject = document.getElementById('lectureSubject').value.trim();
+      const chunkLimit = parseInt(document.getElementById('lectureLimit').value) || 10;
+      const chunkOffset = parseInt(document.getElementById('lectureOffset').value) || 0;
+      const model = document.getElementById('lectureModel').value;
+      const lectureStyle = document.getElementById('lectureStyle').value;
+      const maxTokens = parseInt(document.getElementById('lectureMaxTokens').value) || 3000;
+      const includeVisuals = document.getElementById('lectureVisuals').checked;
+      
+      // Enhanced validation with better error messages
+      if (!bookId) {
+        showOutput('lectureOutput', { 
+          error: 'Book ID is required', 
+          hint: 'Please enter a valid book UUID from the uploaded books' 
+        }, true);
+        return;
+      }
+      
+      if (!classNo || !board || !subject) {
+        showOutput('lectureOutput', { 
+          error: 'Educational context is incomplete', 
+          missing_fields: [
+            !classNo && 'Class',
+            !board && 'Board', 
+            !subject && 'Subject'
+          ].filter(Boolean),
+          hint: 'Please fill in all required educational context fields'
+        }, true);
+        return;
+      }
+      
+      // Validation for chunk limits
+      if (chunkLimit < 1 || chunkLimit > 50) {
+        showOutput('lectureOutput', { 
+          error: 'Invalid chunk limit', 
+          hint: 'Chunk limit must be between 1 and 50' 
+        }, true);
+        return;
+      }
+      
+      showLoading('lectureOutput');
+      
+      console.log('🎓 Generating lecture:', {
+        bookId: bookId.substring(0, 8) + '...',
+        topic: topic || 'All content',
+        context: `Class ${classNo} ${board} ${subject}`,
+        style: lectureStyle,
+        chunks: `${chunkLimit} chunks from offset ${chunkOffset}`
+      });
+      
+      try {
+        const payload = {
+          book_id: bookId,
+          class_no: classNo,
+          board: board,
+          subject: subject,
+          chunk_limit: chunkLimit,
+          chunk_offset: chunkOffset,
+          model: model,
+          max_tokens: maxTokens,
+          include_visuals: includeVisuals,
+          lecture_style: lectureStyle
+        };
+        
+        if (topic) {
+          payload.topic = topic;
+        }
+        
+        const startTime = Date.now();
+        const res = await fetch(`${API_BASE}/lecture/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        const responseTime = Date.now() - startTime;
+        
+        console.log(`✓ Lecture generated in ${responseTime}ms`);
+        
+        // Show the raw JSON response structure (consistent with other APIs)
+        showOutput('lectureOutput', data, !data.success);
+      } catch (e) {
+        console.error('Lecture generation error:', e);
+        showOutput('lectureOutput', { 
+          error: e.message,
+          type: 'Network/Server Error',
+          hint: 'Please check if the server is running and try again'
+        }, true);
       }
     }
 

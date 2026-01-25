@@ -483,6 +483,7 @@ GET /api/v1/stats
 | POST | `/api/v1/search` | Search documents |
 | POST | `/api/v1/tutor/ask` | AI Tutor with provided chunks |
 | POST | `/api/v1/tutor/search-and-ask` | Search + AI Tutor combined |
+| POST | `/api/v1/lecture/generate` | Generate comprehensive lectures |
 
 ---
 
@@ -1037,6 +1038,105 @@ If text extraction fails:
 - Ensure PDF is not password-protected
 - Check if PDF contains actual text (not just images)
 - Try a different PDF to isolate the issue
+
+---
+
+### Lecture Generation
+
+Generate comprehensive, structured lectures from book content with visual elements and educational formatting.
+
+```
+POST /api/v1/lecture/generate
+Content-Type: application/json
+```
+
+#### Request Body
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| book_id | string | Yes | - | UUID of the book to generate lecture from |
+| class_no | string | Yes | - | Class/grade number (e.g., "10", "12") |
+| board | string | Yes | - | Education board (e.g., "CBSE", "NCERT") |
+| subject | string | Yes | - | Subject name (e.g., "Physics", "Biology") |
+| topic | string | No | "Auto-detected" | Specific topic to focus on |
+| chunk_limit | number | No | 10 | Number of chunks to use for content |
+| chunk_offset | number | No | 0 | Starting position in book chunks |
+| model | string | No | "gpt-4o-mini" | OpenAI model to use |
+| max_tokens | number | No | 3000 | Maximum response tokens |
+| include_visuals | boolean | No | true | Include visual element placeholders |
+| lecture_style | string | No | "comprehensive" | Style: comprehensive, concise, interactive |
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/lecture/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "book_id": "550e8400-e29b-41d4-a716-446655440000",
+    "class_no": "10",
+    "board": "CBSE",
+    "subject": "Physics",
+    "topic": "Laws of Motion",
+    "chunk_limit": 8,
+    "chunk_offset": 0,
+    "include_visuals": true,
+    "lecture_style": "comprehensive"
+  }'
+```
+
+#### Response (201 Created)
+
+```json
+{
+  "success": true,
+  "data": {
+    "lecture_content": "<h1>Laws of Motion</h1><h2>Learning Objectives</h2><ul><li>Understand Newton's three laws...</li></ul><div class=\"diagram\" data-type=\"concept-map\" data-title=\"Forces and Motion\">Diagram showing relationship between force, mass, and acceleration</div>...",
+    "metadata": {
+      "book_id": "550e8400-e29b-41d4-a716-446655440000",
+      "book_title": "physics_class10.pdf", 
+      "class_no": "10",
+      "board": "CBSE",
+      "subject": "Physics",
+      "topic": "Laws of Motion",
+      "chunks_used": {
+        "total_available": 45,
+        "used_count": 8,
+        "start_index": 1,
+        "end_index": 8,
+        "offset": 0,
+        "limit": 8
+      },
+      "content_stats": {
+        "total_characters": 4850,
+        "estimated_reading_time_minutes": 5,
+        "sections_covered": 8
+      },
+      "generation_settings": {
+        "model_used": "gpt-4o-mini",
+        "max_tokens": 3000,
+        "lecture_style": "comprehensive",
+        "include_visuals": true,
+        "tokens_used": {
+          "prompt_tokens": 1200,
+          "completion_tokens": 2800,
+          "total_tokens": 4000
+        },
+        "response_time_ms": 3200
+      },
+      "timestamp": "2026-01-25T11:00:00.000Z"
+    }
+  }
+}
+```
+
+#### Visual Elements
+
+The lecture includes HTML placeholders for educational visuals:
+
+- **Diagrams**: `<div class="diagram" data-type="concept-map" data-title="Title">Description</div>`
+- **Charts**: `<div class="chart" data-type="bar" data-title="Title">Data description</div>`  
+- **Images**: `<div class="image" data-type="illustration" data-title="Title">Description</div>`
+- **Interactive**: `<div class="interactive" data-type="quiz" data-title="Title">Activity</div>`
 
 ---
 
