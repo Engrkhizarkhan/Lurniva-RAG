@@ -692,28 +692,8 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         
         const data = await res.json();
         
-        if (data.success && data.data.answer) {
-          // Show the HTML response in a special way
-          const outputEl = document.getElementById('tutorOutput');
-          outputEl.className = 'output success';
-          
-          // Create a container with the metadata and HTML answer
-          outputEl.innerHTML = `
-            <div style="margin-bottom: 15px; font-family: monospace; font-size: 0.85em; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
-              <strong>Metadata:</strong><br>
-              Class: ${data.data.metadata.class_no} | Board: ${data.data.metadata.board} | Subject: ${data.data.metadata.subject}<br>
-              Model: ${data.data.metadata.model_used} | Tokens: ${data.data.metadata.tokens_used?.total_tokens || 'N/A'} | Time: ${data.data.metadata.response_time_ms}ms
-            </div>
-            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #fafafa;">
-              <strong>AI Tutor Response (HTML):</strong>
-              <div style="margin-top: 10px; padding: 15px; background: white; border: 1px solid #eee; border-radius: 3px;">
-                ${data.data.answer}
-              </div>
-            </div>
-          `;
-        } else {
-          showOutput('tutorOutput', data, !data.success);
-        }
+        // Always show the raw JSON response structure
+        showOutput('tutorOutput', data, !data.success);
       } catch (e) {
         showOutput('tutorOutput', { error: e.message }, true);
       }
@@ -766,36 +746,8 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         
         const data = await res.json();
         
-        if (data.success && data.data.answer) {
-          // Show the HTML response with search metadata
-          const outputEl = document.getElementById('searchAskOutput');
-          outputEl.className = 'output success';
-          
-          const chunksInfo = data.data.metadata.chunks_used ? 
-            data.data.metadata.chunks_used.map(c => 
-              `• ${c.file_name} (chunk ${c.chunk_index}, score: ${c.relevance_score})`
-            ).join('<br>') : 'No chunks found';
-          
-          outputEl.innerHTML = `
-            <div style="margin-bottom: 15px; font-family: monospace; font-size: 0.85em; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
-              <strong>Search & Tutor Metadata:</strong><br>
-              Class: ${data.data.metadata.class_no} | Board: ${data.data.metadata.board} | Subject: ${data.data.metadata.subject}<br>
-              Chunks Found: ${data.data.metadata.chunks_found} | Model: ${data.data.metadata.model_used} | Tokens: ${data.data.metadata.tokens_used?.total_tokens || 'N/A'}<br>
-              <details style="margin-top: 5px;">
-                <summary style="cursor: pointer; color: #007bff;">View Retrieved Chunks</summary>
-                <div style="margin-top: 5px; font-size: 0.9em;">${chunksInfo}</div>
-              </details>
-            </div>
-            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #fafafa;">
-              <strong>AI Tutor Response (HTML):</strong>
-              <div style="margin-top: 10px; padding: 15px; background: white; border: 1px solid #eee; border-radius: 3px;">
-                ${data.data.answer}
-              </div>
-            </div>
-          `;
-        } else {
-          showOutput('searchAskOutput', data, !data.success);
-        }
+        // Always show the raw JSON response structure
+        showOutput('searchAskOutput', data, !data.success);
       } catch (e) {
         showOutput('searchAskOutput', { error: e.message }, true);
       }
