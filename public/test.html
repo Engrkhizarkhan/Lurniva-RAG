@@ -333,6 +333,103 @@
         <button onclick="deleteBook()" style="background:linear-gradient(135deg,#dc3545,#c82333)">Delete Book</button>
         <div class="output" id="deleteOutput"></div>
       </div>
+
+      <!-- AI Tutor: Ask with Chunks -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> AI Tutor - Ask with Chunks</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/tutor/ask</p>
+        <div class="form-group">
+          <label>Student Question</label>
+          <input type="text" id="tutorQuestion" placeholder="What is photosynthesis?">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class Number</label>
+            <input type="text" id="tutorClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board</label>
+            <input type="text" id="tutorBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <input type="text" id="tutorSubject" placeholder="e.g., Biology" value="Biology">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Text Chunks (one per line)</label>
+          <textarea id="tutorChunks" rows="4" placeholder="Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide.&#10;The chloroplasts in plant cells contain chlorophyll which captures light energy.">Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide.
+The chloroplasts in plant cells contain chlorophyll which captures light energy.</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>OpenAI Model</label>
+            <select id="tutorModel">
+              <option value="gpt-4o-mini">gpt-4o-mini (Recommended)</option>
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Max Tokens</label>
+            <input type="number" id="tutorMaxTokens" value="1000" min="100" max="4000">
+          </div>
+        </div>
+        <button onclick="askTutor()">Ask AI Tutor</button>
+        <div class="output" id="tutorOutput"></div>
+      </div>
+
+      <!-- AI Tutor: Search and Ask -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> AI Tutor - Search & Ask</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/tutor/search-and-ask</p>
+        <div class="form-group">
+          <label>Student Question</label>
+          <input type="text" id="searchAskQuestion" placeholder="How does electric current flow?">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class Number</label>
+            <input type="text" id="searchAskClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board</label>
+            <input type="text" id="searchAskBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <input type="text" id="searchAskSubject" placeholder="e.g., Physics" value="Physics">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Book ID (optional) <span class="tooltip" title="Leave empty to search all books, or enter a specific Book ID">ℹ️</span></label>
+          <input type="text" id="searchAskBookId" placeholder="Leave empty to search all books">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Search Limit</label>
+            <input type="number" id="searchAskLimit" value="5" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label>Min Score</label>
+            <input type="number" id="searchAskMinScore" value="0.3" min="0" max="1" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Model</label>
+            <select id="searchAskModel">
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Max Tokens</label>
+            <input type="number" id="searchAskMaxTokens" value="1000" min="100" max="4000">
+          </div>
+        </div>
+        <button onclick="searchAndAsk()">Search & Ask AI Tutor</button>
+        <div class="output" id="searchAskOutput"></div>
+      </div>
     </div>
   </div>
 
@@ -546,6 +643,161 @@
         showOutput('deleteOutput', data, !data.success);
       } catch (e) {
         showOutput('deleteOutput', { error: e.message }, true);
+      }
+    }
+
+    // AI Tutor - Ask with Chunks
+    async function askTutor() {
+      const question = document.getElementById('tutorQuestion').value.trim();
+      const classNo = document.getElementById('tutorClass').value.trim();
+      const board = document.getElementById('tutorBoard').value.trim();
+      const subject = document.getElementById('tutorSubject').value.trim();
+      const chunksText = document.getElementById('tutorChunks').value.trim();
+      const model = document.getElementById('tutorModel').value;
+      const maxTokens = parseInt(document.getElementById('tutorMaxTokens').value) || 1000;
+      
+      if (!question) {
+        showOutput('tutorOutput', { error: 'Please enter a question' }, true);
+        return;
+      }
+      
+      if (!classNo || !board || !subject) {
+        showOutput('tutorOutput', { error: 'Please fill in Class, Board, and Subject' }, true);
+        return;
+      }
+      
+      if (!chunksText) {
+        showOutput('tutorOutput', { error: 'Please provide text chunks' }, true);
+        return;
+      }
+      
+      // Split chunks by newlines and filter empty lines
+      const chunks = chunksText.split('\n').map(c => c.trim()).filter(c => c.length > 0);
+      
+      showLoading('tutorOutput');
+      try {
+        const res = await fetch(`${API_BASE}/tutor/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            chunks,
+            class_no: classNo,
+            board,
+            subject,
+            model,
+            max_tokens: maxTokens
+          })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success && data.data.answer) {
+          // Show the HTML response in a special way
+          const outputEl = document.getElementById('tutorOutput');
+          outputEl.className = 'output success';
+          
+          // Create a container with the metadata and HTML answer
+          outputEl.innerHTML = `
+            <div style="margin-bottom: 15px; font-family: monospace; font-size: 0.85em; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
+              <strong>Metadata:</strong><br>
+              Class: ${data.data.metadata.class_no} | Board: ${data.data.metadata.board} | Subject: ${data.data.metadata.subject}<br>
+              Model: ${data.data.metadata.model_used} | Tokens: ${data.data.metadata.tokens_used?.total_tokens || 'N/A'} | Time: ${data.data.metadata.response_time_ms}ms
+            </div>
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #fafafa;">
+              <strong>AI Tutor Response (HTML):</strong>
+              <div style="margin-top: 10px; padding: 15px; background: white; border: 1px solid #eee; border-radius: 3px;">
+                ${data.data.answer}
+              </div>
+            </div>
+          `;
+        } else {
+          showOutput('tutorOutput', data, !data.success);
+        }
+      } catch (e) {
+        showOutput('tutorOutput', { error: e.message }, true);
+      }
+    }
+
+    // AI Tutor - Search and Ask
+    async function searchAndAsk() {
+      const question = document.getElementById('searchAskQuestion').value.trim();
+      const classNo = document.getElementById('searchAskClass').value.trim();
+      const board = document.getElementById('searchAskBoard').value.trim();
+      const subject = document.getElementById('searchAskSubject').value.trim();
+      const bookId = document.getElementById('searchAskBookId').value.trim();
+      const searchLimit = parseInt(document.getElementById('searchAskLimit').value) || 5;
+      const minScore = parseFloat(document.getElementById('searchAskMinScore').value) || 0.3;
+      const model = document.getElementById('searchAskModel').value;
+      const maxTokens = parseInt(document.getElementById('searchAskMaxTokens').value) || 1000;
+      
+      if (!question) {
+        showOutput('searchAskOutput', { error: 'Please enter a question' }, true);
+        return;
+      }
+      
+      if (!classNo || !board || !subject) {
+        showOutput('searchAskOutput', { error: 'Please fill in Class, Board, and Subject' }, true);
+        return;
+      }
+      
+      showLoading('searchAskOutput');
+      try {
+        const payload = {
+          question,
+          class_no: classNo,
+          board,
+          subject,
+          search_limit: searchLimit,
+          min_score: minScore,
+          model,
+          max_tokens: maxTokens
+        };
+        
+        if (bookId) {
+          payload.book_id = bookId;
+        }
+        
+        const res = await fetch(`${API_BASE}/tutor/search-and-ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        if (data.success && data.data.answer) {
+          // Show the HTML response with search metadata
+          const outputEl = document.getElementById('searchAskOutput');
+          outputEl.className = 'output success';
+          
+          const chunksInfo = data.data.metadata.chunks_used ? 
+            data.data.metadata.chunks_used.map(c => 
+              `• ${c.file_name} (chunk ${c.chunk_index}, score: ${c.relevance_score})`
+            ).join('<br>') : 'No chunks found';
+          
+          outputEl.innerHTML = `
+            <div style="margin-bottom: 15px; font-family: monospace; font-size: 0.85em; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
+              <strong>Search & Tutor Metadata:</strong><br>
+              Class: ${data.data.metadata.class_no} | Board: ${data.data.metadata.board} | Subject: ${data.data.metadata.subject}<br>
+              Chunks Found: ${data.data.metadata.chunks_found} | Model: ${data.data.metadata.model_used} | Tokens: ${data.data.metadata.tokens_used?.total_tokens || 'N/A'}<br>
+              <details style="margin-top: 5px;">
+                <summary style="cursor: pointer; color: #007bff;">View Retrieved Chunks</summary>
+                <div style="margin-top: 5px; font-size: 0.9em;">${chunksInfo}</div>
+              </details>
+            </div>
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #fafafa;">
+              <strong>AI Tutor Response (HTML):</strong>
+              <div style="margin-top: 10px; padding: 15px; background: white; border: 1px solid #eee; border-radius: 3px;">
+                ${data.data.answer}
+              </div>
+            </div>
+          `;
+        } else {
+          showOutput('searchAskOutput', data, !data.success);
+        }
+      } catch (e) {
+        showOutput('searchAskOutput', { error: e.message }, true);
       }
     }
 

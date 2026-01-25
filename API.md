@@ -481,6 +481,8 @@ GET /api/v1/stats
 | GET | `/api/v1/books/:bookId/download` | Download PDF file |
 | DELETE | `/api/v1/books/:bookId` | Delete book |
 | POST | `/api/v1/search` | Search documents |
+| POST | `/api/v1/tutor/ask` | AI Tutor with provided chunks |
+| POST | `/api/v1/tutor/search-and-ask` | Search + AI Tutor combined |
 
 ---
 
@@ -533,7 +535,234 @@ CREATE TABLE books (
 
 ---
 
-## Integration Examples
+## AI Tutoring Endpoints
+
+### Ask AI Tutor (with provided chunks)
+
+Send chunks and metadata to AI tutor for educational responses.
+
+```
+POST /api/v1/tutor/ask
+Content-Type: application/json
+```
+
+#### Request Body
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| question | string | Yes | - | Student's question |
+| chunks | array | Yes | - | Array of text chunks or objects with text property |
+| class_no | string/number | Yes | - | Student's class number (e.g., "10", "12") |
+| board | string | Yes | - | Educational board (e.g., "CBSE", "ICSE", "State Board") |
+| subject | string | Yes | - | Subject name (e.g., "Physics", "Mathematics") |
+| model | string | No | "gpt-4o-mini" | OpenAI model to use |
+| max_tokens | number | No | 1000 | Maximum response tokens |
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/tutor/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What is photosynthesis?",
+    "chunks": [
+      "Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide.",
+      "The chloroplasts in plant cells contain chlorophyll which captures light energy."
+    ],
+    "class_no": "10",
+    "board": "CBSE",
+    "subject": "Biology"
+  }'
+```
+
+#### JavaScript Example
+
+```javascript
+const response = await fetch('http://localhost:3000/api/v1/tutor/ask', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    question: "Explain Newton's first law of motion",
+    chunks: [
+      "Newton's first law states that an object at rest stays at rest...",
+      "This law is also known as the law of inertia..."
+    ],
+    class_no: "11",
+    board: "CBSE",
+    subject: "Physics"
+  })
+});
+
+const result = await response.json();
+console.log(result.data.answer); // HTML response
+```
+
+#### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "question": "What is photosynthesis?",
+    "answer": "<h3>Photosynthesis</h3><p>Photosynthesis is the process by which <strong>green plants make their own food</strong> using three main components:</p><ul><li>Sunlight (light energy)</li><li>Water (H₂O)</li><li>Carbon dioxide (CO₂)</li></ul><p>This process takes place in the <strong>chloroplasts</strong> of plant cells, which contain a green pigment called <strong>chlorophyll</strong> that captures light energy from the sun.</p>",
+    "metadata": {
+      "class_no": "10",
+      "board": "CBSE", 
+      "subject": "Biology",
+      "chunks_count": 2,
+      "model_used": "gpt-4o-mini",
+      "tokens_used": {
+        "prompt_tokens": 245,
+        "completion_tokens": 87,
+        "total_tokens": 332
+      },
+      "response_time_ms": 1250,
+      "timestamp": "2026-01-25T10:30:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+### Search and Ask AI Tutor (combined)
+
+Search for relevant chunks automatically and ask the AI tutor.
+
+```
+POST /api/v1/tutor/search-and-ask
+Content-Type: application/json
+```
+
+#### Request Body
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| question | string | Yes | - | Student's question |
+| class_no | string/number | Yes | - | Student's class number |
+| board | string | Yes | - | Educational board |
+| subject | string | Yes | - | Subject name |
+| book_id | string | No | null | Filter to specific book (UUID) |
+| search_limit | number | No | 5 | Max chunks to retrieve |
+| min_score | number | No | 0.3 | Minimum relevance score (0-1) |
+| model | string | No | "gpt-4o-mini" | OpenAI model to use |
+| max_tokens | number | No | 1000 | Maximum response tokens |
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/tutor/search-and-ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How does electric current flow?",
+    "class_no": "10", 
+    "board": "CBSE",
+    "subject": "Physics",
+    "search_limit": 3,
+    "min_score": 0.4
+  }'
+```
+
+#### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "data": {
+    "question": "How does electric current flow?",
+    "answer": "<h3>Electric Current Flow</h3><p>Electric current is the flow of <strong>electric charge</strong> through a conductor...</p>",
+    "metadata": {
+      "class_no": "10",
+      "board": "CBSE",
+      "subject": "Physics", 
+      "chunks_found": 3,
+      "chunks_used": [
+        {
+          "file_name": "physics_class10.pdf",
+          "chunk_index": 45,
+          "relevance_score": 0.8234
+        }
+      ],
+      "search_performed": true,
+      "model_used": "gpt-4o-mini",
+      "tokens_used": {
+        "total_tokens": 456
+      },
+      "response_time_ms": 1850,
+      "timestamp": "2026-01-25T10:30:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+## Tutor API Features
+
+### AI Tutor Rules
+The AI tutor follows strict educational guidelines:
+- **Chunk-only responses**: Only uses provided textbook material
+- **Age-appropriate**: Adapts complexity to class level
+- **HTML format**: Returns properly formatted HTML (no Markdown)
+- **Syllabus-aligned**: Considers board and subject context
+- **Fallback handling**: Indicates when topics aren't covered
+
+### Response Format
+All tutor responses use clean HTML:
+- `<h3>` for main headings
+- `<p>` for paragraphs  
+- `<ul>`, `<li>` for lists
+- `<strong>` for emphasis
+- `<iframe>` for video embeds (if links provided)
+
+### Integration Examples
+
+#### With your existing search system:
+```javascript
+// 1. Search for chunks
+const searchResponse = await fetch('/api/v1/search', {
+  method: 'POST',
+  body: JSON.stringify({ 
+    query: studentQuestion,
+    limit: 5 
+  })
+});
+
+const searchData = await searchResponse.json();
+const chunks = searchData.data.results.map(r => r.text);
+
+// 2. Ask AI tutor
+const tutorResponse = await fetch('/api/v1/tutor/ask', {
+  method: 'POST', 
+  body: JSON.stringify({
+    question: studentQuestion,
+    chunks: chunks,
+    class_no: "10",
+    board: "CBSE", 
+    subject: "Physics"
+  })
+});
+
+const answer = await tutorResponse.json();
+// Display answer.data.answer (HTML) to student
+```
+
+#### Direct integration (recommended):
+```javascript
+// One-step: search + ask
+const response = await fetch('/api/v1/tutor/search-and-ask', {
+  method: 'POST',
+  body: JSON.stringify({
+    question: "Explain photosynthesis process",
+    class_no: "9",
+    board: "CBSE",
+    subject: "Biology"
+  })
+});
+
+const result = await response.json();
+// Display result.data.answer directly
+```
 
 ### Node.js (Express Backend)
 

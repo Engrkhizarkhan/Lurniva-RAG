@@ -15,7 +15,6 @@ import pdfParse from "pdf-parse";
 import PDFParser from "pdf2json";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import cors from "cors";
-import { pipeline, env } from "@xenova/transformers";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import cookieParser from "cookie-parser";
@@ -24,7 +23,7 @@ import cookieParser from "cookie-parser";
 dotenv.config();
 
 // Configure Transformers.js cache
-env.cacheDir = './.cache';
+const transformersCache = './.cache';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -182,7 +181,7 @@ if (!fs.existsSync('./uploads')) {
 // --------------------
 const QDRANT_URL = process.env.QDRANT_URL || "http://localhost:6333";
 const COLLECTION_NAME = process.env.COLLECTION_NAME || "books";
-const VECTOR_SIZE = 384; // all-MiniLM-L6-v2 output size
+let VECTOR_SIZE = 384; // all-MiniLM-L6-v2 output size, will be updated to 1536 for OpenAI
 
 let inMemoryVectorStore = [];
 let qdrant = null;
@@ -241,11 +240,20 @@ async function loadModel() {
   modelLoading = true;
   
   try {
+    console.log("Loading transformers library...");
+    const { pipeline, env } = await import("@xenova/transformers");
+    env.cacheDir = transformersCache;
+    
     console.log("Loading embedding model...");
     embeddingModel = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
     console.log("✓ Embedding model loaded!");
+    VECTOR_SIZE = 384; // MiniLM vector size
   } catch (err) {
     console.error("Failed to load embedding model:", err.message);
+    console.log("⚠️  Running in fallback mode - embeddings will use OpenAI API");
+    // Set a flag to indicate fallback mode
+    embeddingModel = "fallback";
+    VECTOR_SIZE = 1536; // OpenAI ada-002 vector size
   }
   
   modelLoading = false;
@@ -506,6 +514,25 @@ async function extractPDFText(filePath) {
 
 // Generate embedding
 async function generateEmbedding(text) {
+  if (embeddingModel === "fallback") {
+    // Use OpenAI for embeddings as fallback
+    try {
+      const OpenAI = await import('openai').then(module => module.default);
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+      
+      const response = await openai.embeddings.create({
+        model: "text-embedding-ada-002",
+        input: text,
+      });
+      
+      return response.data[0].embedding;
+    } catch (err) {
+      throw new Error("Both local and OpenAI embedding models failed");
+    }
+  }
+  
   const output = await embeddingModel(text, { pooling: 'mean', normalize: true });
   return Array.from(output.data);
 }
@@ -1122,6 +1149,368 @@ app.get("/api/v1/stats", async (req, res) => {
     res.status(500).json({
       success: false,
       error: { code: "STATS_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/tutor/ask
+ * AI Tutoring API - Send chunks and metadata to OpenAI for educational responses
+ */
+app.post("/api/v1/tutor/ask", async (req, res) => {
+  try {
+    const { 
+      question, 
+      chunks, 
+      class_no, 
+      board, 
+      subject,
+      model = "gpt-4o-mini",
+      max_tokens = 1000
+    } = req.body;
+
+    // Validation
+    if (!question || question.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUESTION", message: "Question is required" }
+      });
+    }
+
+    if (!chunks || !Array.isArray(chunks) || chunks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_CHUNKS", message: "Chunks array is required and must not be empty" }
+      });
+    }
+
+    if (!class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "class_no, board, and subject are required" }
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "OPENAI_NOT_CONFIGURED", message: "OpenAI API key not configured" }
+      });
+    }
+
+    // Prepare chunks text
+    const chunksText = chunks.map((chunk, index) => {
+      if (typeof chunk === 'string') {
+        return `Chunk ${index + 1}:\n${chunk}`;
+      } else if (chunk.text) {
+        return `Chunk ${index + 1}:\n${chunk.text}`;
+      } else {
+        return `Chunk ${index + 1}:\n${JSON.stringify(chunk)}`;
+      }
+    }).join('\n\n');
+
+    // Create the tutor prompt
+    const tutorPrompt = `You are an AI tutor for a learning platform.
+
+Inputs:
+• Retrieved textbook chunks
+• Metadata: Class ${class_no}, Board ${board}, Subject ${subject}
+
+Rules:
+1. Answer ONLY using the provided chunks.
+2. Do NOT use external knowledge or assumptions.
+3. If the answer is not in the chunks, say: "This topic is not covered in the provided material."
+4. Keep explanations simple and suitable for Class ${class_no}.
+5. Respond ONLY in valid HTML (no Markdown).
+6. Use <h3>, <p>, <ul>, <li>, <strong> as needed.
+7. If a video link exists, embed it using <iframe>.
+8. If diagrams/images are referenced, explain them clearly.
+9. If the question is unrelated to the subject or chunks, state that politely.
+10. Do not mention chunks, retrieval, or system behavior.
+
+Goal: Provide clear, syllabus-aligned answers within the given material only.
+
+--- PROVIDED CHUNKS ---
+${chunksText}
+
+--- STUDENT QUESTION ---
+${question}
+
+--- YOUR RESPONSE (HTML ONLY) ---`;
+
+    console.log(`\n🤖 AI Tutor Request:`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Question: ${question.substring(0, 100)}${question.length > 100 ? '...' : ''}`);
+    console.log(`   Chunks: ${chunks.length}`);
+
+    // Call OpenAI API
+    try {
+      const OpenAI = await import('openai').then(module => module.default);
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+
+      const startTime = Date.now();
+      
+      const completion = await openai.chat.completions.create({
+        model: model,
+        messages: [
+          {
+            role: "system",
+            content: "You are an AI tutor that provides educational responses in HTML format only. Follow the rules exactly as specified."
+          },
+          {
+            role: "user",
+            content: tutorPrompt
+          }
+        ],
+        max_tokens: max_tokens,
+        temperature: 0.3, // Lower temperature for more consistent educational responses
+      });
+
+      const responseTime = Date.now() - startTime;
+      const aiResponse = completion.choices[0].message.content;
+      const tokensUsed = completion.usage;
+
+      console.log(`   ✓ Response generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+
+      res.json({
+        success: true,
+        data: {
+          question: question,
+          answer: aiResponse,
+          metadata: {
+            class_no: class_no,
+            board: board,
+            subject: subject,
+            chunks_count: chunks.length,
+            model_used: model,
+            tokens_used: tokensUsed,
+            response_time_ms: responseTime,
+            timestamp: new Date().toISOString()
+          }
+        }
+      });
+
+    } catch (openaiError) {
+      console.error("OpenAI API error:", openaiError);
+      
+      // Handle specific OpenAI errors
+      if (openaiError.status === 401) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "INVALID_API_KEY", message: "Invalid OpenAI API key" }
+        });
+      } else if (openaiError.status === 429) {
+        return res.status(429).json({
+          success: false,
+          error: { code: "RATE_LIMITED", message: "OpenAI API rate limit exceeded" }
+        });
+      } else if (openaiError.status === 400) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "INVALID_REQUEST", message: openaiError.message }
+        });
+      }
+      
+      return res.status(500).json({
+        success: false,
+        error: { code: "OPENAI_ERROR", message: openaiError.message }
+      });
+    }
+
+  } catch (err) {
+    console.error("Tutor API error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "TUTOR_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/tutor/search-and-ask
+ * Combined endpoint: Search for relevant chunks and ask AI tutor
+ */
+app.post("/api/v1/tutor/search-and-ask", async (req, res) => {
+  try {
+    const { 
+      question, 
+      book_id, 
+      class_no, 
+      board, 
+      subject,
+      search_limit = 5,
+      min_score = 0.3,
+      model = "gpt-4o-mini",
+      max_tokens = 1000
+    } = req.body;
+
+    // Validation
+    if (!question || question.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUESTION", message: "Question is required" }
+      });
+    }
+
+    if (!class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "class_no, board, and subject are required" }
+      });
+    }
+
+    if (!embeddingModel) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "MODEL_NOT_READY", message: "Embedding model is still loading" }
+      });
+    }
+
+    console.log(`\n🔍 Search & Ask Request:`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Question: ${question}`);
+    console.log(`   Book ID: ${book_id || 'All books'}`);
+
+    // Step 1: Search for relevant chunks
+    const queryVector = await generateEmbedding(question);
+    let searchResults = await searchVectors(queryVector, search_limit, book_id);
+    
+    // Filter by min_score
+    searchResults = searchResults.filter(r => r.score >= min_score);
+
+    if (searchResults.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          question: question,
+          answer: "<p>This topic is not covered in the provided material.</p>",
+          metadata: {
+            class_no: class_no,
+            board: board,
+            subject: subject,
+            chunks_found: 0,
+            search_performed: true,
+            timestamp: new Date().toISOString()
+          }
+        }
+      });
+    }
+
+    // Step 2: Extract chunks for AI tutor
+    const chunks = searchResults.map(r => ({
+      text: r.payload.text,
+      score: r.score,
+      file_name: r.payload.file_name,
+      chunk_index: r.payload.chunk_index
+    }));
+
+    console.log(`   Found ${chunks.length} relevant chunks`);
+
+    // Step 3: Call the tutor API internally
+    const tutorRequest = {
+      question,
+      chunks: chunks.map(c => c.text), // Just the text for the tutor
+      class_no,
+      board,
+      subject,
+      model,
+      max_tokens
+    };
+
+    // Reuse the tutor logic
+    const chunksText = tutorRequest.chunks.map((chunk, index) => 
+      `Chunk ${index + 1}:\n${chunk}`
+    ).join('\n\n');
+
+    const tutorPrompt = `You are an AI tutor for a learning platform.
+
+Inputs:
+• Retrieved textbook chunks
+• Metadata: Class ${class_no}, Board ${board}, Subject ${subject}
+
+Rules:
+1. Answer ONLY using the provided chunks.
+2. Do NOT use external knowledge or assumptions.
+3. If the answer is not in the chunks, say: "This topic is not covered in the provided material."
+4. Keep explanations simple and suitable for Class ${class_no}.
+5. Respond ONLY in valid HTML (no Markdown).
+6. Use <h3>, <p>, <ul>, <li>, <strong> as needed.
+7. If a video link exists, embed it using <iframe>.
+8. If diagrams/images are referenced, explain them clearly.
+9. If the question is unrelated to the subject or chunks, state that politely.
+10. Do not mention chunks, retrieval, or system behavior.
+
+Goal: Provide clear, syllabus-aligned answers within the given material only.
+
+--- PROVIDED CHUNKS ---
+${chunksText}
+
+--- STUDENT QUESTION ---
+${question}
+
+--- YOUR RESPONSE (HTML ONLY) ---`;
+
+    // Call OpenAI
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const startTime = Date.now();
+    
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: "You are an AI tutor that provides educational responses in HTML format only. Follow the rules exactly as specified."
+        },
+        {
+          role: "user",
+          content: tutorPrompt
+        }
+      ],
+      max_tokens: max_tokens,
+      temperature: 0.3,
+    });
+
+    const responseTime = Date.now() - startTime;
+    const aiResponse = completion.choices[0].message.content;
+    const tokensUsed = completion.usage;
+
+    console.log(`   ✓ AI Response generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+
+    res.json({
+      success: true,
+      data: {
+        question: question,
+        answer: aiResponse,
+        metadata: {
+          class_no: class_no,
+          board: board,
+          subject: subject,
+          chunks_found: chunks.length,
+          chunks_used: chunks.map(c => ({
+            file_name: c.file_name,
+            chunk_index: c.chunk_index,
+            relevance_score: parseFloat(c.score.toFixed(4))
+          })),
+          search_performed: true,
+          model_used: model,
+          tokens_used: tokensUsed,
+          response_time_ms: responseTime,
+          timestamp: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Search & Ask error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "SEARCH_ASK_ERROR", message: err.message }
     });
   }
 });
