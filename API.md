@@ -336,7 +336,7 @@ GET /api/v1/books/:bookId
 curl http://localhost:3000/api/v1/books/550e8400-e29b-41d4-a716-446655440000
 
 # Get book with all chunks
-curl "http://localhost:3000/api/v1/books/550e8400-e29b-41d4-a716-446655440000?include_chunks=true"
+curl "http://localhost:3000/api/v1/books/550e8400-e29b-41d4-a716-446655440000?include_chunks=true&limit=40&offset=0"
 ```
 
 #### Response (200 OK)

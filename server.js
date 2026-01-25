@@ -281,12 +281,48 @@ function cosineSimilarity(vecA, vecB) {
 async function storeVectors(points) {
   if (useQdrant && qdrant) {
     const BATCH_SIZE = 100;
+    const totalBatches = Math.ceil(points.length / BATCH_SIZE);
+    let successCount = 0;
+    let failedIndices = [];
+    
     for (let i = 0; i < points.length; i += BATCH_SIZE) {
       const batch = points.slice(i, i + BATCH_SIZE);
-      await qdrant.upsert(COLLECTION_NAME, { wait: true, points: batch });
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      
+      try {
+        await qdrant.upsert(COLLECTION_NAME, { wait: true, points: batch });
+        successCount += batch.length;
+        
+        if (totalBatches > 1) {
+          process.stdout.write(`\r   Batch upload: ${batchNum}/${totalBatches}`);
+        }
+      } catch (err) {
+        // Log which batch failed
+        console.error(`\n   ❌ Batch ${batchNum} failed:`, err.message);
+        // Try to upload points individually to identify problematic ones
+        for (let j = 0; j < batch.length; j++) {
+          try {
+            await qdrant.upsert(COLLECTION_NAME, { wait: true, points: [batch[j]] });
+            successCount++;
+          } catch (pointErr) {
+            const chunkIndex = batch[j].payload.chunk_index;
+            failedIndices.push(chunkIndex);
+            console.error(`   ❌ Chunk ${chunkIndex} failed:`, pointErr.message);
+          }
+        }
+      }
     }
+    
+    if (totalBatches > 1) console.log(''); // New line after batch progress
+    
+    if (failedIndices.length > 0) {
+      console.warn(`   ⚠️  ${failedIndices.length} chunks failed to upload: ${failedIndices.join(', ')}`);
+    }
+    
+    return { total: points.length, success: successCount, failed: failedIndices.length };
   } else {
     inMemoryVectorStore.push(...points);
+    return { total: points.length, success: points.length, failed: 0 };
   }
 }
 
@@ -554,6 +590,10 @@ app.post("/api/v1/books/upload", upload.single("file"), async (req, res) => {
     }
 
     // Generate embeddings and store
+    console.log(`\n📄 Processing: ${originalName}`);
+    console.log(`   Total chunks: ${chunks.length}`);
+    console.log(`   Generating embeddings...`);
+    
     const points = [];
     for (let i = 0; i < chunks.length; i++) {
       const vector = await generateEmbedding(chunks[i]);
@@ -572,9 +612,22 @@ app.post("/api/v1/books/upload", upload.single("file"), async (req, res) => {
           created_at: new Date().toISOString()
         }
       });
+      
+      // Progress logging every 10 chunks or at the end
+      if ((i + 1) % 10 === 0 || i === chunks.length - 1) {
+        const percent = Math.round(((i + 1) / chunks.length) * 100);
+        process.stdout.write(`\r   Embedding: ${i + 1}/${chunks.length} chunks (${percent}%)`);
+      }
     }
-
-    await storeVectors(points);
+    console.log(''); // New line after progress
+    
+    console.log(`   Uploading to vector store...`);
+    const uploadResult = await storeVectors(points);
+    console.log(`   ✓ Upload complete! (${uploadResult.success}/${uploadResult.total} chunks)`);
+    
+    if (uploadResult.failed > 0) {
+      console.warn(`   ⚠️  Warning: ${uploadResult.failed} chunks failed to upload`);
+    }
 
     // Rename file to use book_id for easy reference
     const newFileName = `${bookId}_${originalName}`;
@@ -582,6 +635,13 @@ app.post("/api/v1/books/upload", upload.single("file"), async (req, res) => {
     fs.renameSync(filePath, newFilePath);
 
     const processingTime = Date.now() - startTime;
+    
+    // Summary log
+    console.log(`\n   ✅ Book processed successfully!`);
+    console.log(`   ├─ Book ID: ${bookId}`);
+    console.log(`   ├─ Chunks: ${chunks.length} (${uploadResult.success} uploaded${uploadResult.failed > 0 ? `, ${uploadResult.failed} failed` : ''})`);
+    console.log(`   ├─ Pages: ${pageCount}`);
+    console.log(`   └─ Time: ${(processingTime / 1000).toFixed(2)}s\n`);
 
     // Return comprehensive data for MySQL storage
     res.status(201).json({
@@ -638,7 +698,7 @@ app.post("/api/v1/books/upload", upload.single("file"), async (req, res) => {
  */
 app.post("/api/v1/search", async (req, res) => {
   try {
-    const { query, book_id, limit = 5 } = req.body;
+    const { query, book_id, limit = 5, min_score = 0 } = req.body;
 
     if (!query || query.trim().length === 0) {
       return res.status(400).json({
@@ -655,13 +715,19 @@ app.post("/api/v1/search", async (req, res) => {
     }
 
     const queryVector = await generateEmbedding(query);
-    const results = await searchVectors(queryVector, Math.min(limit, 20), book_id);
+    let results = await searchVectors(queryVector, Math.min(limit, 20), book_id);
+    
+    // Filter by min_score if provided
+    if (min_score > 0) {
+      results = results.filter(r => r.score >= min_score);
+    }
 
     res.json({
       success: true,
       data: {
         query: query,
         book_id: book_id || null,
+        min_score: min_score,
         result_count: results.length,
         results: results.map(r => ({
           chunk_id: r.id,
@@ -766,7 +832,7 @@ app.get("/api/v1/books", async (req, res) => {
 app.get("/api/v1/books/:bookId", async (req, res) => {
   try {
     const { bookId } = req.params;
-    const { include_chunks = false } = req.query;
+    const { include_chunks = false, limit = 0, offset = 0 } = req.query;
 
     const bookInfo = await getBookInfo(bookId);
     
@@ -777,7 +843,8 @@ app.get("/api/v1/books/:bookId", async (req, res) => {
       });
     }
 
-    const chunks = await getBookChunks(bookId);
+    const allChunks = await getBookChunks(bookId);
+    const totalChunks = allChunks.length;
 
     const response = {
       success: true,
@@ -785,15 +852,33 @@ app.get("/api/v1/books/:bookId", async (req, res) => {
         book_id: bookId,
         file_name: bookInfo.file_name,
         file_path: bookInfo.file_path,
-        chunk_count: chunks.length,
-        total_text_length: chunks.reduce((sum, c) => sum + c.text_length, 0),
+        chunk_count: totalChunks,
+        total_text_length: allChunks.reduce((sum, c) => sum + c.text_length, 0),
         created_at: bookInfo.created_at,
         storage_backend: useQdrant ? "qdrant" : "in-memory"
       }
     };
 
     if (include_chunks === 'true' || include_chunks === true) {
+      const chunkLimit = parseInt(limit) || 0;
+      const chunkOffset = parseInt(offset) || 0;
+      
+      let chunks = allChunks;
+      
+      // Apply offset first
+      if (chunkOffset > 0) {
+        chunks = chunks.slice(chunkOffset);
+      }
+      
+      // Apply limit if specified
+      if (chunkLimit > 0) {
+        chunks = chunks.slice(0, chunkLimit);
+      }
+      
       response.data.chunks = chunks;
+      response.data.chunks_returned = chunks.length;
+      response.data.offset = chunkOffset;
+      response.data.limit = chunkLimit || 'all';
     }
 
     res.json(response);
@@ -884,6 +969,10 @@ app.post("/api/v1/books/text", async (req, res) => {
       });
     }
 
+    console.log(`\n📝 Processing text: ${title}`);
+    console.log(`   Total chunks: ${chunks.length}`);
+    console.log(`   Generating embeddings...`);
+    
     const points = [];
     for (let i = 0; i < chunks.length; i++) {
       const vector = await generateEmbedding(chunks[i]);
@@ -901,11 +990,31 @@ app.post("/api/v1/books/text", async (req, res) => {
           created_at: new Date().toISOString()
         }
       });
+      
+      // Progress logging every 10 chunks or at the end
+      if ((i + 1) % 10 === 0 || i === chunks.length - 1) {
+        const percent = Math.round(((i + 1) / chunks.length) * 100);
+        process.stdout.write(`\r   Embedding: ${i + 1}/${chunks.length} chunks (${percent}%)`);
+      }
+    }
+    console.log(''); // New line after progress
+    
+    console.log(`   Uploading to vector store...`);
+    const uploadResult = await storeVectors(points);
+    console.log(`   ✓ Upload complete! (${uploadResult.success}/${uploadResult.total} chunks)`);
+    
+    if (uploadResult.failed > 0) {
+      console.warn(`   ⚠️  Warning: ${uploadResult.failed} chunks failed to upload`);
     }
 
-    await storeVectors(points);
-
     const processingTime = Date.now() - startTime;
+    
+    // Summary log
+    console.log(`\n   ✅ Text processed successfully!`);
+    console.log(`   ├─ Book ID: ${bookId}`);
+    console.log(`   ├─ Title: ${title}`);
+    console.log(`   ├─ Chunks: ${chunks.length}`);
+    console.log(`   └─ Time: ${(processingTime / 1000).toFixed(2)}s\n`);
 
     res.status(201).json({
       success: true,
