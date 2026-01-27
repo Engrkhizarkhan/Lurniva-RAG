@@ -1833,7 +1833,7 @@ ${contentText}
 
 REQUIREMENTS:
 1. Create a structured lecture with clear sections and subsections
-2. Use appropriate HTML formatting (h1, h2, h3, p, ul, ol, li, strong, em, blockquote) make it like <section> and inside these h1 and etc
+2. Use appropriate HTML formatting (h1, h2, h3, p, ul, ol, li, strong, em, blockquote) make it like <section> and inside it the h1 and etc
 3. Add educational elements: definitions, examples, key points, summaries
 4. Make it engaging and age-appropriate for Class ${class_no} students
 5. Follow ${board} curriculum standards
