@@ -514,6 +514,241 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         <button onclick="searchAndAsk()">Search & Ask AI Tutor</button>
         <div class="output" id="searchAskOutput"></div>
       </div>
+
+      <!-- Assignment Generation -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 📝 Generate Assignment</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/assignment/generate</p>
+        
+        <div class="form-group">
+          <label>Book ID <span style="color: red;">*</span></label>
+          <input type="text" id="assignmentBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class <span style="color: red;">*</span></label>
+            <input type="text" id="assignmentClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="assignmentBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="assignmentSubject" placeholder="e.g., Physics" value="Physics">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Topic (Optional)</label>
+          <input type="text" id="assignmentTopic" placeholder="e.g., Newton's Laws, Photosynthesis, Chemical Bonding">
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Content Chunks Limit <span class="tooltip" title="Number of text sections from the book to use for assignment generation">ℹ️</span></label>
+            <input type="number" id="assignmentChunkLimit" value="5" min="1" max="20">
+          </div>
+          <div class="form-group">
+            <label>Content Offset <span class="tooltip" title="Skip this many chunks from the beginning">ℹ️</span></label>
+            <input type="number" id="assignmentChunkOffset" value="0" min="0">
+          </div>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Assignment Type</label>
+            <select id="assignmentType">
+              <option value="mixed">Mixed Questions</option>
+              <option value="essay">Essay Questions</option>
+              <option value="mcq">Multiple Choice</option>
+              <option value="short_answer">Short Answer</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Difficulty Level</label>
+            <select id="assignmentDifficulty">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Number of Questions</label>
+            <input type="number" id="assignmentQuestionCount" value="5" min="1" max="15">
+          </div>
+        </div>
+        
+        <button onclick="generateAssignment()">📝 Generate Assignment</button>
+        <div class="output" id="assignmentOutput"></div>
+      </div>
+
+      <!-- Quiz Generation -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 🧪 Generate Quiz/Test</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/quiz/generate</p>
+        
+        <div class="form-group">
+          <label>Book ID <span style="color: red;">*</span></label>
+          <input type="text" id="quizBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class <span style="color: red;">*</span></label>
+            <input type="text" id="quizClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="quizBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="quizSubject" placeholder="e.g., Physics" value="Physics">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Topic (Optional)</label>
+          <input type="text" id="quizTopic" placeholder="e.g., Electric Current, Cell Structure, Chemical Reactions">
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Content Chunks Limit</label>
+            <input type="number" id="quizChunkLimit" value="3" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label>Content Offset</label>
+            <input type="number" id="quizChunkOffset" value="0" min="0">
+          </div>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Quiz Type</label>
+            <select id="quizType">
+              <option value="mcq" selected>Multiple Choice</option>
+              <option value="true_false">True/False</option>
+              <option value="mixed">Mixed Types</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Difficulty</label>
+            <select id="quizDifficulty">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Questions</label>
+            <input type="number" id="quizQuestionCount" value="10" min="1" max="25">
+          </div>
+          <div class="form-group">
+            <label>Time Limit (min)</label>
+            <input type="number" id="quizTimeLimit" value="30" min="5" max="120">
+          </div>
+        </div>
+        
+        <button onclick="generateQuiz()">🧪 Generate Quiz</button>
+        <div class="output" id="quizOutput"></div>
+      </div>
+
+      <!-- Assignment Checker -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> ✅ Check Assignment</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/assignment/check</p>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Assignment ID</label>
+            <input type="text" id="checkAssignmentId" placeholder="Assignment UUID">
+          </div>
+          <div class="form-group">
+            <label>Student ID (Optional)</label>
+            <input type="text" id="checkStudentId" placeholder="e.g., STU001" value="STU001">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class</label>
+            <input type="text" id="checkAssignmentClass" placeholder="10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board</label>
+            <input type="text" id="checkAssignmentBoard" placeholder="CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <input type="text" id="checkAssignmentSubject" placeholder="Physics" value="Physics">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Original Assignment Data (JSON)</label>
+          <textarea id="checkOriginalAssignment" rows="4" placeholder='{"questions": [{"question_id": 1, "question": "Explain Newton\'s first law", "marks": 10, "correct_answer": "An object at rest stays at rest...", "marking_criteria": "Full explanation with examples"}]}'></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label>Student Answers (JSON Array)</label>
+          <textarea id="checkStudentAnswers" rows="4" placeholder='[{"question_id": 1, "answer": "Newton\'s first law states that an object at rest will stay at rest unless acted upon by an external force..."}]'></textarea>
+        </div>
+        
+        <button onclick="checkAssignment()">✅ Grade Assignment</button>
+        <div class="output" id="checkAssignmentOutput"></div>
+      </div>
+
+      <!-- Quiz Checker -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 🎯 Check Quiz/Test</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/quiz/check</p>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Quiz ID</label>
+            <input type="text" id="checkQuizId" placeholder="Quiz UUID">
+          </div>
+          <div class="form-group">
+            <label>Student ID</label>
+            <input type="text" id="checkQuizStudentId" placeholder="STU001" value="STU001">
+          </div>
+          <div class="form-group">
+            <label>Time Taken (seconds)</label>
+            <input type="number" id="checkQuizTimeTaken" placeholder="1800" value="1800">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class</label>
+            <input type="text" id="checkQuizClass" placeholder="10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board</label>
+            <input type="text" id="checkQuizBoard" placeholder="CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <input type="text" id="checkQuizSubject" placeholder="Physics" value="Physics">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Original Quiz Data (JSON)</label>
+          <textarea id="checkOriginalQuiz" rows="3" placeholder='{"questions": [{"question_id": 1, "correct_answer": "A", "marks": 1}, {"question_id": 2, "correct_answer": "B", "marks": 1}]}'></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label>Student Quiz Answers (JSON Array)</label>
+          <textarea id="checkQuizAnswers" rows="3" placeholder='[{"question_id": 1, "selected_answer": "A"}, {"question_id": 2, "selected_answer": "C"}]'></textarea>
+        </div>
+        
+        <button onclick="checkQuiz()">🎯 Grade Quiz</button>
+        <div class="output" id="checkQuizOutput"></div>
+      </div>
     </div>
   </div>
 
@@ -708,6 +943,233 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       }
     }
 
+    // Generate Educational Lecture
+    async function generateLecture() {
+      const bookId = document.getElementById('lectureBookId').value.trim();
+      const classNo = document.getElementById('lectureClass').value.trim();
+      const board = document.getElementById('lectureBoard').value.trim();
+      const subject = document.getElementById('lectureSubject').value.trim();
+      const topic = document.getElementById('lectureTopic').value.trim();
+      const chunkLimit = parseInt(document.getElementById('lectureLimit').value) || 10;
+      const chunkOffset = parseInt(document.getElementById('lectureOffset').value) || 0;
+      const model = document.getElementById('lectureModel').value;
+      const lectureStyle = document.getElementById('lectureStyle').value;
+      const maxTokens = parseInt(document.getElementById('lectureMaxTokens').value);
+      const includeVisuals = document.getElementById('lectureVisuals').checked;
+
+      if (!bookId || !classNo || !board || !subject) {
+        showOutput('lectureOutput', { error: 'Book ID, Class, Board, and Subject are required' }, true);
+        return;
+      }
+
+      showLoading('lectureOutput');
+      try {
+        const res = await fetch(`${API_BASE}/lecture/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            book_id: bookId,
+            class_no: classNo,
+            board: board,
+            subject: subject,
+            topic: topic || undefined,
+            chunk_limit: chunkLimit,
+            chunk_offset: chunkOffset,
+            model: model,
+            lecture_style: lectureStyle,
+            max_tokens: maxTokens,
+            include_visuals: includeVisuals
+          })
+        });
+        const data = await res.json();
+        showOutput('lectureOutput', data, !data.success);
+      } catch (e) {
+        showOutput('lectureOutput', { error: e.message }, true);
+      }
+    }
+
+    // Generate Assignment
+    async function generateAssignment() {
+      const bookId = document.getElementById('assignmentBookId').value.trim();
+      const classNo = document.getElementById('assignmentClass').value.trim();
+      const board = document.getElementById('assignmentBoard').value.trim();
+      const subject = document.getElementById('assignmentSubject').value.trim();
+      const topic = document.getElementById('assignmentTopic').value.trim();
+      const chunkLimit = parseInt(document.getElementById('assignmentChunkLimit').value) || 5;
+      const chunkOffset = parseInt(document.getElementById('assignmentChunkOffset').value) || 0;
+      const assignmentType = document.getElementById('assignmentType').value;
+      const difficulty = document.getElementById('assignmentDifficulty').value;
+      const questionCount = parseInt(document.getElementById('assignmentQuestionCount').value) || 5;
+
+      if (!bookId || !classNo || !board || !subject) {
+        showOutput('assignmentOutput', { error: 'Book ID, Class, Board, and Subject are required' }, true);
+        return;
+      }
+
+      showLoading('assignmentOutput');
+      try {
+        const res = await fetch(`${API_BASE}/assignment/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            book_id: bookId,
+            class_no: classNo,
+            board: board,
+            subject: subject,
+            topic: topic || undefined,
+            chunk_limit: chunkLimit,
+            chunk_offset: chunkOffset,
+            assignment_type: assignmentType,
+            difficulty: difficulty,
+            question_count: questionCount
+          })
+        });
+        const data = await res.json();
+        showOutput('assignmentOutput', data, !data.success);
+      } catch (e) {
+        showOutput('assignmentOutput', { error: e.message }, true);
+      }
+    }
+
+    // Generate Quiz
+    async function generateQuiz() {
+      const bookId = document.getElementById('quizBookId').value.trim();
+      const classNo = document.getElementById('quizClass').value.trim();
+      const board = document.getElementById('quizBoard').value.trim();
+      const subject = document.getElementById('quizSubject').value.trim();
+      const topic = document.getElementById('quizTopic').value.trim();
+      const chunkLimit = parseInt(document.getElementById('quizChunkLimit').value) || 3;
+      const chunkOffset = parseInt(document.getElementById('quizChunkOffset').value) || 0;
+      const quizType = document.getElementById('quizType').value;
+      const difficulty = document.getElementById('quizDifficulty').value;
+      const questionCount = parseInt(document.getElementById('quizQuestionCount').value) || 10;
+      const timeLimit = parseInt(document.getElementById('quizTimeLimit').value) || 30;
+
+      if (!bookId || !classNo || !board || !subject) {
+        showOutput('quizOutput', { error: 'Book ID, Class, Board, and Subject are required' }, true);
+        return;
+      }
+
+      showLoading('quizOutput');
+      try {
+        const res = await fetch(`${API_BASE}/quiz/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            book_id: bookId,
+            class_no: classNo,
+            board: board,
+            subject: subject,
+            topic: topic || undefined,
+            chunk_limit: chunkLimit,
+            chunk_offset: chunkOffset,
+            quiz_type: quizType,
+            difficulty: difficulty,
+            question_count: questionCount,
+            time_limit: timeLimit
+          })
+        });
+        const data = await res.json();
+        showOutput('quizOutput', data, !data.success);
+      } catch (e) {
+        showOutput('quizOutput', { error: e.message }, true);
+      }
+    }
+
+    // Check Assignment
+    async function checkAssignment() {
+      const assignmentId = document.getElementById('checkAssignmentId').value.trim();
+      const studentId = document.getElementById('checkStudentId').value.trim();
+      const classNo = document.getElementById('checkAssignmentClass').value.trim();
+      const board = document.getElementById('checkAssignmentBoard').value.trim();
+      const subject = document.getElementById('checkAssignmentSubject').value.trim();
+      const originalAssignmentText = document.getElementById('checkOriginalAssignment').value.trim();
+      const studentAnswersText = document.getElementById('checkStudentAnswers').value.trim();
+
+      if (!assignmentId || !originalAssignmentText || !studentAnswersText) {
+        showOutput('checkAssignmentOutput', { error: 'Assignment ID, Original Assignment Data, and Student Answers are required' }, true);
+        return;
+      }
+
+      let originalAssignment, studentAnswers;
+      try {
+        originalAssignment = JSON.parse(originalAssignmentText);
+        studentAnswers = JSON.parse(studentAnswersText);
+      } catch (e) {
+        showOutput('checkAssignmentOutput', { error: 'Invalid JSON in assignment data or student answers' }, true);
+        return;
+      }
+
+      showLoading('checkAssignmentOutput');
+      try {
+        const res = await fetch(`${API_BASE}/assignment/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assignment_id: assignmentId,
+            student_id: studentId,
+            class_no: classNo,
+            board: board,
+            subject: subject,
+            assignment_data: originalAssignment,
+            student_answers: studentAnswers
+          })
+        });
+        const data = await res.json();
+        showOutput('checkAssignmentOutput', data, !data.success);
+      } catch (e) {
+        showOutput('checkAssignmentOutput', { error: e.message }, true);
+      }
+    }
+
+    // Check Quiz
+    async function checkQuiz() {
+      const quizId = document.getElementById('checkQuizId').value.trim();
+      const studentId = document.getElementById('checkQuizStudentId').value.trim();
+      const timeTaken = parseInt(document.getElementById('checkQuizTimeTaken').value) || 0;
+      const classNo = document.getElementById('checkQuizClass').value.trim();
+      const board = document.getElementById('checkQuizBoard').value.trim();
+      const subject = document.getElementById('checkQuizSubject').value.trim();
+      const originalQuizText = document.getElementById('checkOriginalQuiz').value.trim();
+      const quizAnswersText = document.getElementById('checkQuizAnswers').value.trim();
+
+      if (!quizId || !originalQuizText || !quizAnswersText) {
+        showOutput('checkQuizOutput', { error: 'Quiz ID, Original Quiz Data, and Quiz Answers are required' }, true);
+        return;
+      }
+
+      let originalQuiz, quizAnswers;
+      try {
+        originalQuiz = JSON.parse(originalQuizText);
+        quizAnswers = JSON.parse(quizAnswersText);
+      } catch (e) {
+        showOutput('checkQuizOutput', { error: 'Invalid JSON in quiz data or quiz answers' }, true);
+        return;
+      }
+
+      showLoading('checkQuizOutput');
+      try {
+        const res = await fetch(`${API_BASE}/quiz/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quiz_id: quizId,
+            student_id: studentId,
+            time_taken: timeTaken,
+            class_no: classNo,
+            board: board,
+            subject: subject,
+            quiz_data: originalQuiz,
+            student_answers: quizAnswers
+          })
+        });
+        const data = await res.json();
+        showOutput('checkQuizOutput', data, !data.success);
+      } catch (e) {
+        showOutput('checkQuizOutput', { error: e.message }, true);
+      }
+    }
+
     // Delete Book
     async function deleteBook() {
       const bookId = document.getElementById('deleteBookId').value.trim();
@@ -716,13 +1178,13 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         return;
       }
       
-      if (!confirm(`Are you sure you want to delete book: ${bookId}?`)) return;
+      if (!confirm(`Are you sure you want to delete book: ${bookId}?`)) {
+        return;
+      }
       
       showLoading('deleteOutput');
       try {
-        const res = await fetch(`${API_BASE}/books/${bookId}`, {
-          method: 'DELETE'
-        });
+        const res = await fetch(`${API_BASE}/books/${bookId}`, { method: 'DELETE' });
         const data = await res.json();
         showOutput('deleteOutput', data, !data.success);
       } catch (e) {
@@ -730,7 +1192,7 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       }
     }
 
-    // AI Tutor - Ask with Chunks
+    // Ask AI Tutor with Chunks
     async function askTutor() {
       const question = document.getElementById('tutorQuestion').value.trim();
       const classNo = document.getElementById('tutorClass').value.trim();
@@ -740,23 +1202,12 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       const model = document.getElementById('tutorModel').value;
       const maxTokens = parseInt(document.getElementById('tutorMaxTokens').value) || 1000;
       
-      if (!question) {
-        showOutput('tutorOutput', { error: 'Please enter a question' }, true);
+      if (!question || !classNo || !board || !subject || !chunksText) {
+        showOutput('tutorOutput', { error: 'All fields are required' }, true);
         return;
       }
       
-      if (!classNo || !board || !subject) {
-        showOutput('tutorOutput', { error: 'Please fill in Class, Board, and Subject' }, true);
-        return;
-      }
-      
-      if (!chunksText) {
-        showOutput('tutorOutput', { error: 'Please provide text chunks' }, true);
-        return;
-      }
-      
-      // Split chunks by newlines and filter empty lines
-      const chunks = chunksText.split('\n').map(c => c.trim()).filter(c => c.length > 0);
+      const chunks = chunksText.split('\n').filter(chunk => chunk.trim().length > 0);
       
       showLoading('tutorOutput');
       try {
@@ -764,26 +1215,23 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            question,
-            chunks,
+            question: question,
+            chunks: chunks,
             class_no: classNo,
-            board,
-            subject,
-            model,
+            board: board,
+            subject: subject,
+            model: model,
             max_tokens: maxTokens
           })
         });
-        
         const data = await res.json();
-        
-        // Always show the raw JSON response structure
         showOutput('tutorOutput', data, !data.success);
       } catch (e) {
         showOutput('tutorOutput', { error: e.message }, true);
       }
     }
 
-    // AI Tutor - Search and Ask
+    // Search and Ask AI Tutor
     async function searchAndAsk() {
       const question = document.getElementById('searchAskQuestion').value.trim();
       const classNo = document.getElementById('searchAskClass').value.trim();
@@ -795,26 +1243,21 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       const model = document.getElementById('searchAskModel').value;
       const maxTokens = parseInt(document.getElementById('searchAskMaxTokens').value) || 1000;
       
-      if (!question) {
-        showOutput('searchAskOutput', { error: 'Please enter a question' }, true);
-        return;
-      }
-      
-      if (!classNo || !board || !subject) {
-        showOutput('searchAskOutput', { error: 'Please fill in Class, Board, and Subject' }, true);
+      if (!question || !classNo || !board || !subject) {
+        showOutput('searchAskOutput', { error: 'Question, Class, Board, and Subject are required' }, true);
         return;
       }
       
       showLoading('searchAskOutput');
       try {
         const payload = {
-          question,
+          question: question,
           class_no: classNo,
-          board,
-          subject,
+          board: board,
+          subject: subject,
           search_limit: searchLimit,
           min_score: minScore,
-          model,
+          model: model,
           max_tokens: maxTokens
         };
         
@@ -827,116 +1270,96 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        
         const data = await res.json();
-        
-        // Always show the raw JSON response structure
         showOutput('searchAskOutput', data, !data.success);
       } catch (e) {
         showOutput('searchAskOutput', { error: e.message }, true);
       }
     }
 
-    // Generate Lecture
-    async function generateLecture() {
-      const bookId = document.getElementById('lectureBookId').value.trim();
-      const topic = document.getElementById('lectureTopic').value.trim();
-      const classNo = document.getElementById('lectureClass').value.trim();
-      const board = document.getElementById('lectureBoard').value.trim();
-      const subject = document.getElementById('lectureSubject').value.trim();
-      const chunkLimit = parseInt(document.getElementById('lectureLimit').value) || 10;
-      const chunkOffset = parseInt(document.getElementById('lectureOffset').value) || 0;
-      const model = document.getElementById('lectureModel').value;
-      const lectureStyle = document.getElementById('lectureStyle').value;
-      const maxTokens = parseInt(document.getElementById('lectureMaxTokens').value) || 3000;
-      const includeVisuals = document.getElementById('lectureVisuals').checked;
-      
-      // Enhanced validation with better error messages
-      if (!bookId) {
-        showOutput('lectureOutput', { 
-          error: 'Book ID is required', 
-          hint: 'Please enter a valid book UUID from the uploaded books' 
-        }, true);
-        return;
-      }
-      
-      if (!classNo || !board || !subject) {
-        showOutput('lectureOutput', { 
-          error: 'Educational context is incomplete', 
-          missing_fields: [
-            !classNo && 'Class',
-            !board && 'Board', 
-            !subject && 'Subject'
-          ].filter(Boolean),
-          hint: 'Please fill in all required educational context fields'
-        }, true);
-        return;
-      }
-      
-      // Validation for chunk limits
-      if (chunkLimit < 1 || chunkLimit > 50) {
-        showOutput('lectureOutput', { 
-          error: 'Invalid chunk limit', 
-          hint: 'Chunk limit must be between 1 and 50' 
-        }, true);
-        return;
-      }
-      
-      showLoading('lectureOutput');
-      
-      console.log('🎓 Generating lecture:', {
-        bookId: bookId.substring(0, 8) + '...',
-        topic: topic || 'All content',
-        context: `Class ${classNo} ${board} ${subject}`,
-        style: lectureStyle,
-        chunks: `${chunkLimit} chunks from offset ${chunkOffset}`
-      });
-      
-      try {
-        const payload = {
-          book_id: bookId,
-          class_no: classNo,
-          board: board,
-          subject: subject,
-          chunk_limit: chunkLimit,
-          chunk_offset: chunkOffset,
-          model: model,
-          max_tokens: maxTokens,
-          include_visuals: includeVisuals,
-          lecture_style: lectureStyle
-        };
-        
-        if (topic) {
-          payload.topic = topic;
-        }
-        
-        const startTime = Date.now();
-        const res = await fetch(`${API_BASE}/lecture/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        
-        const data = await res.json();
-        const responseTime = Date.now() - startTime;
-        
-        console.log(`✓ Lecture generated in ${responseTime}ms`);
-        
-        // Show the raw JSON response structure (consistent with other APIs)
-        showOutput('lectureOutput', data, !data.success);
-      } catch (e) {
-        console.error('Lecture generation error:', e);
-        showOutput('lectureOutput', { 
-          error: e.message,
-          type: 'Network/Server Error',
-          hint: 'Please check if the server is running and try again'
-        }, true);
-      }
-    }
+    // Initialize on page load
+    window.onload = function() {
+      checkHealth();
+      getStats();
 
-    // Initial health check
-    checkHealth();
-    getStats();
+      // Add some helpful examples for the new APIs
+      // Assignment example
+      document.getElementById('checkOriginalAssignment').value = JSON.stringify({
+        "questions": [
+          {
+            "question_id": 1,
+            "question": "Explain Newton's first law of motion with examples.",
+            "marks": 10,
+            "correct_answer": "Newton's first law states that an object at rest stays at rest and an object in motion stays in motion with the same speed and in the same direction unless acted upon by an unbalanced force.",
+            "marking_criteria": "Full explanation (5 marks), Real-world examples (3 marks), Clear understanding (2 marks)"
+          },
+          {
+            "question_id": 2,
+            "question": "What is the difference between mass and weight?",
+            "marks": 5,
+            "correct_answer": "Mass is the amount of matter in an object, measured in kg. Weight is the force of gravity on an object, measured in Newtons.",
+            "marking_criteria": "Correct definitions (3 marks), Units mentioned (2 marks)"
+          }
+        ]
+      }, null, 2);
+
+      // Student answers example
+      document.getElementById('checkStudentAnswers').value = JSON.stringify([
+        {
+          "question_id": 1,
+          "answer": "Newton's first law says that objects at rest stay at rest unless a force acts on them. For example, a book on a table won't move unless someone pushes it."
+        },
+        {
+          "question_id": 2,
+          "answer": "Mass is how much stuff is in something, weight is how heavy it feels on Earth."
+        }
+      ], null, 2);
+
+      // Quiz example
+      document.getElementById('checkOriginalQuiz').value = JSON.stringify({
+        "questions": [
+          {
+            "question_id": 1,
+            "question": "What is the formula for force?",
+            "options": ["A) F = ma", "B) F = mv", "C) F = mg", "D) F = m/a"],
+            "correct_answer": "A",
+            "marks": 1
+          },
+          {
+            "question_id": 2,
+            "question": "Which planet is closest to the Sun?",
+            "options": ["A) Venus", "B) Mercury", "C) Earth", "D) Mars"],
+            "correct_answer": "B",
+            "marks": 1
+          }
+        ]
+      }, null, 2);
+
+      // Quiz answers example
+      document.getElementById('checkQuizAnswers').value = JSON.stringify([
+        {
+          "question_id": 1,
+          "selected_answer": "A"
+        },
+        {
+          "question_id": 2,
+          "selected_answer": "A"
+        }
+      ], null, 2);
+    };
   </script>
+
+  <style>
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .required {
+      color: #ff6b6b;
+    }
+  </style>
 </body>
 </html>

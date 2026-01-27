@@ -512,6 +512,22 @@ async function extractPDFText(filePath) {
   throw new Error('Could not extract text from PDF');
 }
 
+// Helper function to clean JSON from markdown formatting
+function cleanJsonFromMarkdown(content) {
+  // Remove markdown code blocks
+  let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*$/gi, '');
+  
+  // Remove any leading/trailing whitespace
+  cleaned = cleaned.trim();
+  
+  // If it still starts with backticks, remove them
+  if (cleaned.startsWith('`')) {
+    cleaned = cleaned.replace(/^`+/, '').replace(/`+$/, '');
+  }
+  
+  return cleaned;
+}
+
 // Generate embedding
 async function generateEmbedding(text) {
   if (embeddingModel === "fallback") {
@@ -1733,6 +1749,748 @@ ${question}
     res.status(500).json({
       success: false,
       error: { code: "SEARCH_ASK_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/assignment/generate
+ * Generate assignments based on book chunks with limit and offset
+ */
+app.post("/api/v1/assignment/generate", async (req, res) => {
+  try {
+    const { 
+      book_id,
+      class_no, 
+      board, 
+      subject,
+      topic,
+      chunk_limit = 5,
+      chunk_offset = 0,
+      difficulty = "medium", // easy, medium, hard
+      assignment_type = "mixed", // essay, mcq, short_answer, mixed
+      question_count = 5,
+      model = "gpt-4o-mini",
+      max_tokens = 2000
+    } = req.body;
+
+    // Validation
+    if (!book_id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_BOOK_ID", message: "book_id is required" }
+      });
+    }
+
+    if (!class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "class_no, board, and subject are required" }
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "OPENAI_NOT_CONFIGURED", message: "OpenAI API key not configured" }
+      });
+    }
+
+    console.log(`\n📝 Assignment Generation Request:`);
+    console.log(`   Book ID: ${book_id}`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Type: ${assignment_type} | Difficulty: ${difficulty}`);
+    console.log(`   Chunks: ${chunk_limit} (offset: ${chunk_offset})`);
+
+    // Get book information
+    const bookInfo = await getBookInfo(book_id);
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "BOOK_NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    // Get book chunks with pagination
+    const allChunks = await getBookChunks(book_id);
+    const totalChunks = allChunks.length;
+    
+    if (totalChunks === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NO_CONTENT", message: "No content found for this book" }
+      });
+    }
+
+    // Apply pagination
+    const startIndex = chunk_offset;
+    const endIndex = Math.min(startIndex + chunk_limit, totalChunks);
+    const selectedChunks = allChunks.slice(startIndex, endIndex);
+
+    if (selectedChunks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_PAGINATION", message: "No chunks found for given offset and limit" }
+      });
+    }
+
+    // Prepare content for assignment generation
+    const contentText = selectedChunks.map((chunk, index) => {
+      const actualIndex = startIndex + index + 1;
+      return `Content Section ${actualIndex}:\n${chunk.text}`;
+    }).join('\n\n');
+
+    // Create assignment prompt
+    const assignmentPrompt = `You are an expert educator creating assignments for ${subject} (Class ${class_no}, ${board} Board).
+
+CONTENT TO BASE ASSIGNMENT ON:
+${contentText}
+
+ASSIGNMENT REQUIREMENTS:
+- Type: ${assignment_type}
+- Difficulty Level: ${difficulty}
+- Number of Questions: ${question_count}
+- Class Level: ${class_no}
+- Board: ${board}
+- Subject: ${subject}
+${topic ? `- Focus Topic: ${topic}` : ''}
+
+INSTRUCTIONS:
+1. Create ONLY questions based on the provided content
+2. DO NOT use external knowledge beyond the given text
+3. Questions must be age-appropriate for Class ${class_no}
+4. Follow ${board} board examination patterns
+5. Include a marking scheme with point allocation
+6. Return response in JSON format ONLY - NO markdown, NO code blocks, NO extra formatting
+
+IMPORTANT: Return ONLY valid JSON. Do not wrap in code blocks or any markdown formatting.
+
+JSON STRUCTURE REQUIRED:
+{
+  "assignment": {
+    "title": "Assignment Title",
+    "instructions": "Student instructions",
+    "total_marks": 100,
+    "time_limit": "60 minutes",
+    "questions": [
+      {
+        "question_id": 1,
+        "type": "essay|mcq|short_answer",
+        "question": "Question text here",
+        "marks": 10,
+        "options": ["A) Option", "B) Option", "C) Option", "D) Option"], // Only for MCQ
+        "correct_answer": "Answer for grading reference",
+        "marking_criteria": "How to evaluate this answer",
+        "difficulty": "easy|medium|hard"
+      }
+    ]
+  }
+}
+
+Generate ${question_count} questions of type ${assignment_type} with ${difficulty} difficulty level.`;
+
+    console.log(`   Generating assignment from ${selectedChunks.length} chunks...`);
+
+    // Call OpenAI API
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const startTime = Date.now();
+    
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert educator specializing in ${subject} for ${board} board. Create assignments in JSON format only. Return ONLY valid JSON without any markdown formatting, code blocks, or extra text. Follow the exact structure provided.`
+        },
+        {
+          role: "user",
+          content: assignmentPrompt
+        }
+      ],
+      max_tokens: max_tokens,
+      temperature: 0.4,
+    });
+
+    const responseTime = Date.now() - startTime;
+    const assignmentContent = completion.choices[0].message.content;
+    const tokensUsed = completion.usage;
+
+    try {
+      // Clean and parse the JSON response
+      const cleanedContent = cleanJsonFromMarkdown(assignmentContent);
+      const assignmentData = JSON.parse(cleanedContent);
+      
+      console.log(`   ✓ Assignment generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+
+      res.json({
+        success: true,
+        data: {
+          assignment: assignmentData.assignment,
+          metadata: {
+            assignment_id: generateUUID(),
+            book_id: book_id,
+            book_title: bookInfo.file_name,
+            class_no: class_no,
+            board: board,
+            subject: subject,
+            topic: topic || "Generated from book content",
+            difficulty: difficulty,
+            assignment_type: assignment_type,
+            chunks_used: {
+              total_available: totalChunks,
+              used_count: selectedChunks.length,
+              start_index: startIndex + 1,
+              end_index: endIndex,
+              offset: chunk_offset,
+              limit: chunk_limit
+            },
+            generation_settings: {
+              model_used: model,
+              max_tokens: max_tokens,
+              question_count: question_count,
+              tokens_used: tokensUsed,
+              response_time_ms: responseTime
+            },
+            created_at: new Date().toISOString()
+          }
+        }
+      });
+
+    } catch (parseError) {
+      console.error("Failed to parse assignment JSON:", parseError);
+      res.status(500).json({
+        success: false,
+        error: { code: "JSON_PARSE_ERROR", message: "Failed to parse generated assignment" },
+        raw_response: assignmentContent
+      });
+    }
+
+  } catch (err) {
+    console.error("Assignment generation error:", err);
+    
+    if (err.status === 401) {
+      return res.status(401).json({
+        success: false,
+        error: { code: "INVALID_API_KEY", message: "Invalid OpenAI API key" }
+      });
+    } else if (err.status === 429) {
+      return res.status(429).json({
+        success: false,
+        error: { code: "RATE_LIMITED", message: "OpenAI API rate limit exceeded" }
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: { code: "ASSIGNMENT_GENERATION_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/quiz/generate
+ * Generate quiz/test from book chunks
+ */
+app.post("/api/v1/quiz/generate", async (req, res) => {
+  try {
+    const { 
+      book_id,
+      class_no, 
+      board, 
+      subject,
+      topic,
+      chunk_limit = 3,
+      chunk_offset = 0,
+      difficulty = "medium",
+      question_count = 10,
+      quiz_type = "mcq", // mcq, true_false, mixed
+      time_limit = 30, // minutes
+      model = "gpt-4o-mini",
+      max_tokens = 2500
+    } = req.body;
+
+    // Validation
+    if (!book_id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_BOOK_ID", message: "book_id is required" }
+      });
+    }
+
+    if (!class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "class_no, board, and subject are required" }
+      });
+    }
+
+    console.log(`\n🧪 Quiz Generation Request:`);
+    console.log(`   Book ID: ${book_id}`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Type: ${quiz_type} | Questions: ${question_count}`);
+
+    // Get book chunks
+    const bookInfo = await getBookInfo(book_id);
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "BOOK_NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    const allChunks = await getBookChunks(book_id);
+    const selectedChunks = allChunks.slice(chunk_offset, chunk_offset + chunk_limit);
+
+    const contentText = selectedChunks.map((chunk, index) => 
+      `Section ${index + 1}:\n${chunk.text}`
+    ).join('\n\n');
+
+    const quizPrompt = `Create a ${quiz_type} quiz for ${subject} (Class ${class_no}, ${board} Board) based ONLY on the provided content.
+
+CONTENT:
+${contentText}
+
+QUIZ REQUIREMENTS:
+- Type: ${quiz_type}
+- Questions: ${question_count}
+- Difficulty: ${difficulty}
+- Time Limit: ${time_limit} minutes
+${topic ? `- Focus Topic: ${topic}` : ''}
+
+IMPORTANT RULES:
+1. Questions MUST be based ONLY on the provided content
+2. DO NOT use external knowledge
+3. Age-appropriate for Class ${class_no}
+4. Follow ${board} examination patterns
+5. Include correct answers and explanations
+6. Return ONLY valid JSON - NO markdown formatting or code blocks
+
+JSON FORMAT REQUIRED (return ONLY this JSON structure):
+{
+  "quiz": {
+    "title": "Quiz Title",
+    "instructions": "Quiz instructions for students",
+    "time_limit": ${time_limit},
+    "total_marks": ${question_count * 1},
+    "questions": [
+      {
+        "question_id": 1,
+        "type": "${quiz_type}",
+        "question": "Question text",
+        "options": ["A) Option", "B) Option", "C) Option", "D) Option"],
+        "correct_answer": "A",
+        "explanation": "Why this answer is correct",
+        "marks": 1,
+        "difficulty": "${difficulty}"
+      }
+    ]
+  }
+}
+
+Generate exactly ${question_count} questions.`;
+
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const startTime = Date.now();
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system", 
+          content: `You are a quiz generator for ${board} board ${subject}. Generate JSON format quizzes only. Return ONLY valid JSON without markdown formatting or code blocks.`
+        },
+        {
+          role: "user",
+          content: quizPrompt
+        }
+      ],
+      max_tokens: max_tokens,
+      temperature: 0.3,
+    });
+
+    const responseTime = Date.now() - startTime;
+    const quizContent = completion.choices[0].message.content;
+    const tokensUsed = completion.usage;
+
+    try {
+      const cleanedContent = cleanJsonFromMarkdown(quizContent);
+      const quizData = JSON.parse(cleanedContent);
+      
+      console.log(`   ✓ Quiz generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+
+      res.json({
+        success: true,
+        data: {
+          quiz: quizData.quiz,
+          metadata: {
+            quiz_id: generateUUID(),
+            book_id: book_id,
+            book_title: bookInfo.file_name,
+            class_no: class_no,
+            board: board,
+            subject: subject,
+            topic: topic || "Generated from content",
+            quiz_type: quiz_type,
+            difficulty: difficulty,
+            question_count: question_count,
+            time_limit: time_limit,
+            chunks_used: selectedChunks.length,
+            created_at: new Date().toISOString(),
+            generation_time_ms: responseTime
+          }
+        }
+      });
+
+    } catch (parseError) {
+      res.status(500).json({
+        success: false,
+        error: { code: "JSON_PARSE_ERROR", message: "Failed to parse generated quiz" },
+        raw_response: quizContent
+      });
+    }
+
+  } catch (err) {
+    console.error("Quiz generation error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "QUIZ_GENERATION_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/assignment/check
+ * Check and grade assignment submissions
+ */
+app.post("/api/v1/assignment/check", async (req, res) => {
+  try {
+    const {
+      assignment_id,
+      student_answers, // Array of {question_id, answer}
+      assignment_data, // Original assignment for reference
+      class_no,
+      board,
+      subject,
+      model = "gpt-4o-mini",
+      max_tokens = 2000
+    } = req.body;
+
+    // Validation
+    if (!student_answers || !Array.isArray(student_answers)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_ANSWERS", message: "student_answers array is required" }
+      });
+    }
+
+    if (!assignment_data || !assignment_data.questions) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_ASSIGNMENT", message: "assignment_data with questions is required" }
+      });
+    }
+
+    console.log(`\n✅ Assignment Checking Request:`);
+    console.log(`   Assignment ID: ${assignment_id}`);
+    console.log(`   Answers to check: ${student_answers.length}`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+
+    // Prepare checking prompt
+    const checkingPrompt = `You are an expert teacher grading assignments for ${subject} (Class ${class_no}, ${board} Board).
+
+ORIGINAL ASSIGNMENT QUESTIONS:
+${assignment_data.questions.map(q => `
+Question ${q.question_id} (${q.marks} marks):
+${q.question}
+Expected Answer: ${q.correct_answer}
+Marking Criteria: ${q.marking_criteria}
+`).join('\n')}
+
+STUDENT ANSWERS:
+${student_answers.map(ans => `
+Question ${ans.question_id}:
+Student Answer: ${ans.answer}
+`).join('\n')}
+
+GRADING INSTRUCTIONS:
+1. Grade each answer based on the marking criteria
+2. Give partial marks for partially correct answers
+3. Provide constructive feedback for each answer
+4. Be fair but maintain academic standards
+5. Consider the student's class level (${class_no})
+
+JSON FORMAT REQUIRED:
+{
+  "grading": {
+    "student_id": "${req.body.student_id || 'unknown'}",
+    "assignment_id": "${assignment_id}",
+    "total_marks": ${assignment_data.total_marks || 100},
+    "scored_marks": 0,
+    "percentage": 0,
+    "grade": "A+|A|B+|B|C+|C|D|F",
+    "overall_feedback": "Overall performance feedback",
+    "question_grades": [
+      {
+        "question_id": 1,
+        "max_marks": 10,
+        "scored_marks": 8,
+        "feedback": "Specific feedback for this answer",
+        "suggestions": "How to improve"
+      }
+    ],
+    "graded_at": "${new Date().toISOString()}"
+  }
+}
+
+Calculate total scored marks and percentage. Provide detailed feedback.`;
+
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const startTime = Date.now();
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: `You are an experienced teacher grading assignments for ${board} board ${subject}. Be fair, constructive, and maintain academic standards. Return ONLY valid JSON without any markdown formatting or code blocks.`
+        },
+        {
+          role: "user",
+          content: checkingPrompt
+        }
+      ],
+      max_tokens: max_tokens,
+      temperature: 0.2, // Lower temperature for consistent grading
+    });
+
+    const responseTime = Date.now() - startTime;
+    const gradingContent = completion.choices[0].message.content;
+    const tokensUsed = completion.usage;
+
+    try {
+      const cleanedContent = cleanJsonFromMarkdown(gradingContent);
+      const gradingData = JSON.parse(cleanedContent);
+      
+      console.log(`   ✓ Grading completed (${responseTime}ms)`);
+      console.log(`   📊 Score: ${gradingData.grading.scored_marks}/${gradingData.grading.total_marks} (${gradingData.grading.percentage}%)`);
+
+      res.json({
+        success: true,
+        data: {
+          grading_result: gradingData.grading,
+          metadata: {
+            assignment_id: assignment_id,
+            questions_graded: student_answers.length,
+            total_questions: assignment_data.questions.length,
+            class_no: class_no,
+            board: board,
+            subject: subject,
+            grading_model: model,
+            tokens_used: tokensUsed,
+            grading_time_ms: responseTime,
+            graded_at: new Date().toISOString()
+          }
+        }
+      });
+
+    } catch (parseError) {
+      console.error("Failed to parse grading JSON:", parseError);
+      res.status(500).json({
+        success: false,
+        error: { code: "JSON_PARSE_ERROR", message: "Failed to parse grading result" },
+        raw_response: gradingContent
+      });
+    }
+
+  } catch (err) {
+    console.error("Assignment checking error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "ASSIGNMENT_CHECKING_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/quiz/check
+ * Check and grade quiz/test submissions
+ */
+app.post("/api/v1/quiz/check", async (req, res) => {
+  try {
+    const {
+      quiz_id,
+      student_answers, // Array of {question_id, selected_answer}
+      quiz_data, // Original quiz for reference
+      time_taken, // in seconds
+      class_no,
+      board,
+      subject
+    } = req.body;
+
+    // Validation
+    if (!student_answers || !Array.isArray(student_answers)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_ANSWERS", message: "student_answers array is required" }
+      });
+    }
+
+    if (!quiz_data || !quiz_data.questions) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUIZ", message: "quiz_data with questions is required" }
+      });
+    }
+
+    console.log(`\n🧪 Quiz Checking Request:`);
+    console.log(`   Quiz ID: ${quiz_id}`);
+    console.log(`   Answers submitted: ${student_answers.length}`);
+    console.log(`   Time taken: ${time_taken}s`);
+
+    // Auto-grade the quiz (since it's mostly MCQ/objective)
+    const gradingResults = [];
+    let totalMarks = 0;
+    let scoredMarks = 0;
+
+    // Create answer map for quick lookup
+    const answerMap = new Map();
+    student_answers.forEach(ans => {
+      answerMap.set(ans.question_id, ans.selected_answer);
+    });
+
+    // Grade each question
+    quiz_data.questions.forEach(question => {
+      const studentAnswer = answerMap.get(question.question_id);
+      const correctAnswer = question.correct_answer;
+      const marks = question.marks || 1;
+      
+      totalMarks += marks;
+      
+      let scored = 0;
+      let status = 'incorrect';
+      
+      if (studentAnswer) {
+        // Handle different answer formats
+        const normalizeAnswer = (ans) => {
+          if (!ans) return '';
+          return ans.toString().toLowerCase().trim();
+        };
+        
+        if (normalizeAnswer(studentAnswer) === normalizeAnswer(correctAnswer)) {
+          scored = marks;
+          status = 'correct';
+          scoredMarks += marks;
+        }
+      } else {
+        status = 'not_attempted';
+      }
+
+      gradingResults.push({
+        question_id: question.question_id,
+        question: question.question,
+        correct_answer: correctAnswer,
+        student_answer: studentAnswer || null,
+        marks: marks,
+        scored: scored,
+        status: status,
+        explanation: question.explanation || 'No explanation available'
+      });
+    });
+
+    // Calculate performance metrics
+    const percentage = totalMarks > 0 ? Math.round((scoredMarks / totalMarks) * 100) : 0;
+    const attempted = student_answers.length;
+    const correct = gradingResults.filter(r => r.status === 'correct').length;
+    const incorrect = gradingResults.filter(r => r.status === 'incorrect').length;
+    const notAttempted = gradingResults.filter(r => r.status === 'not_attempted').length;
+
+    // Determine grade based on percentage
+    let grade = 'F';
+    if (percentage >= 90) grade = 'A+';
+    else if (percentage >= 80) grade = 'A';
+    else if (percentage >= 70) grade = 'B+';
+    else if (percentage >= 60) grade = 'B';
+    else if (percentage >= 50) grade = 'C+';
+    else if (percentage >= 40) grade = 'C';
+    else if (percentage >= 33) grade = 'D';
+
+    // Performance feedback
+    let feedback = '';
+    if (percentage >= 90) {
+      feedback = 'Excellent performance! You have mastered this topic.';
+    } else if (percentage >= 70) {
+      feedback = 'Good work! You have a solid understanding of the material.';
+    } else if (percentage >= 50) {
+      feedback = 'Fair performance. Review the topics you found challenging.';
+    } else {
+      feedback = 'Needs improvement. Please review the material and practice more.';
+    }
+
+    // Time performance analysis
+    const expectedTime = quiz_data.time_limit * 60; // Convert minutes to seconds
+    let timePerformance = 'optimal';
+    if (time_taken < expectedTime * 0.3) {
+      timePerformance = 'too_fast';
+      feedback += ' Consider spending more time reading questions carefully.';
+    } else if (time_taken > expectedTime) {
+      timePerformance = 'overtime';
+      feedback += ' Work on time management for future quizzes.';
+    }
+
+    console.log(`   ✓ Quiz graded automatically`);
+    console.log(`   📊 Score: ${scoredMarks}/${totalMarks} (${percentage}%) - Grade: ${grade}`);
+
+    res.json({
+      success: true,
+      data: {
+        quiz_result: {
+          quiz_id: quiz_id,
+          student_id: req.body.student_id || 'unknown',
+          total_questions: quiz_data.questions.length,
+          total_marks: totalMarks,
+          scored_marks: scoredMarks,
+          percentage: percentage,
+          grade: grade,
+          time_taken: time_taken,
+          time_limit: expectedTime,
+          time_performance: timePerformance,
+          performance_summary: {
+            attempted: attempted,
+            correct: correct,
+            incorrect: incorrect,
+            not_attempted: notAttempted
+          },
+          overall_feedback: feedback,
+          question_results: gradingResults,
+          completed_at: new Date().toISOString()
+        },
+        metadata: {
+          quiz_id: quiz_id,
+          class_no: class_no,
+          board: board,
+          subject: subject,
+          auto_graded: true,
+          grading_method: 'automatic_mcq',
+          checked_at: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Quiz checking error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "QUIZ_CHECKING_ERROR", message: err.message }
     });
   }
 });
