@@ -2262,27 +2262,37 @@ app.post("/api/v1/assignment/generate", async (req, res) => {
     }).join('\n\n');
 
     // Create assignment prompt
-    const assignmentPrompt = `You are an expert educator creating document-based assignment questions for ${subject} (Class ${class_no}, ${board} Board).
+    const assignmentPrompt = `You are an expert educator creating document-based assignment topics for ${subject} (Class ${class_no}, ${board} Board).
 
 CONTENT TO ANALYZE:
 ${contentText}
 
 ASSIGNMENT REQUIREMENTS:
-- Generate ${question_count} assignment questions based ONLY on the provided content
-- Students will answer ALL questions in a single document submission
-- Total marks: 10-12 marks distributed across questions
-- Submission deadline: 3-8 days from assignment date
+- Generate ${question_count} assignment topics/prompts based ONLY on the provided content
+- These are essay/discussion topics that students will write about in detail
+- Students will submit a comprehensive document addressing these topics
+- Total marks: 15-20 marks distributed across topics
+- Submission deadline: 5-7 days from assignment date
 - Difficulty Level: ${difficulty}
 - Class Level: ${class_no}
 - Board: ${board}
 - Subject: ${subject}
 ${topic ? `- Focus Area: ${topic}` : ''}
 
+ASSIGNMENT TOPIC FORMAT:
+Each topic should be structured like:
+- Main Topic Statement (what to discuss/analyze)
+- Focus Points (specific aspects to cover)
+- Objective (what skills/understanding are being tested)
+
+EXAMPLE FORMAT:
+"Discuss the character of Mr. Chipping as a teacher. Focus: How did he change from his early days at Brookfield to his retirement? Mention his sense of humor and his relationship with his students. Objective: To test the student's grip on the novel Goodbye, Mr. Chips."
+
 INSTRUCTIONS:
-1. Create questions that require written responses in document format
-2. Base questions ONLY on the provided content
-3. No presentations, projects, or oral work - only written document submission
-4. Questions should test comprehension, analysis, and application
+1. Create assignment topics that require analytical writing and deep thinking
+2. Base topics ONLY on the provided content
+3. Topics should require 300-500 words per topic for Class ${class_no}
+4. Include specific focus points to guide students
 5. Age-appropriate for Class ${class_no}
 6. Follow ${board} board curriculum standards
 7. Return response in JSON format ONLY - NO markdown, NO code blocks
@@ -2291,30 +2301,49 @@ RETURN ONLY THIS JSON:
 {
   "assignment": {
     "title": "${subject} Assignment - Class ${class_no}",
-    "instructions": "Answer ALL questions in a single document. Submit within 3-8 days. Write clear, detailed responses with proper explanations.",
-    "total_marks": 10,
-    "submission_deadline_days": 5,
+    "assignment_type": "Document-based Essay Assignment",
+    "instructions": "Write comprehensive essays addressing each topic. Support your analysis with examples from the provided study material. Submit as a single document within the deadline.",
+    "total_marks": 20,
+    "submission_deadline_days": 6,
     "submission_format": "Document (PDF/Word)",
-    "questions": [
+    "word_count_per_topic": "400-600 words",
+    "topics": [
       {
-        "question_id": 1,
-        "question": "Question text here based on provided content",
-        "marks": 2,
-        "expected_length": "100-150 words",
-        "marking_criteria": "Understanding of concept, clarity of explanation, use of examples from content"
+        "topic_id": 1,
+        "topic_statement": "Main topic/discussion prompt based on provided content",
+        "focus_points": [
+          "Specific aspect 1 to cover",
+          "Specific aspect 2 to cover",
+          "Specific aspect 3 to cover"
+        ],
+        "objective": "To test student's understanding of [specific concept/skill from content]",
+        "marks": 5,
+        "expected_elements": [
+          "Introduction with clear thesis",
+          "Analysis with examples from content",
+          "Logical argument development",
+          "Conclusion with personal insights"
+        ]
       }
     ],
     "general_instructions": [
-      "Read all questions carefully before starting",
-      "Base your answers only on the provided study material",
-      "Write in clear, complete sentences",
-      "Support your answers with examples from the content",
-      "Minimum word count must be maintained for each question"
+      "Read all topics carefully before starting",
+      "Base your essays only on the provided study material",
+      "Use clear paragraph structure with topic sentences",
+      "Support all arguments with specific examples from the content",
+      "Maintain academic tone and proper grammar",
+      "Each topic should be treated as a separate essay within your document"
+    ],
+    "evaluation_criteria": [
+      "Content knowledge and understanding (40%)",
+      "Analysis and critical thinking (30%)",
+      "Use of examples from study material (20%)",
+      "Writing clarity and organization (10%)"
     ]
   }
 }`;
 
-    console.log(`   Generating assignment questions from ${selectedChunks.length} chunks...`);
+    console.log(`   Generating assignment topics from ${selectedChunks.length} chunks...`);
 
     // Call OpenAI API
     const OpenAI = await import('openai').then(module => module.default);
@@ -2349,7 +2378,7 @@ RETURN ONLY THIS JSON:
       const cleanedContent = cleanJsonFromMarkdown(assignmentContent);
       const assignmentData = JSON.parse(cleanedContent);
       
-      console.log(`   ✓ Assignment questions generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+      console.log(`   ✓ Assignment topics generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
 
       res.json({
         success: true,
@@ -2364,9 +2393,11 @@ RETURN ONLY THIS JSON:
             subject: subject,
             focus_area: topic || "Generated from book content",
             difficulty: difficulty,
-            question_count: assignmentData.assignment.questions.length,
+            topic_count: assignmentData.assignment.topics.length,
             total_marks: assignmentData.assignment.total_marks,
             submission_deadline_days: assignmentData.assignment.submission_deadline_days,
+            assignment_type: "essay_topics",
+            word_count_per_topic: assignmentData.assignment.word_count_per_topic,
             chunks_used: {
               total_available: totalChunks,
               used_count: selectedChunks.length,
@@ -2378,7 +2409,7 @@ RETURN ONLY THIS JSON:
             generation_settings: {
               model_used: model,
               max_tokens: max_tokens,
-              questions_requested: question_count,
+              topics_requested: question_count,
               tokens_used: tokensUsed,
               response_time_ms: responseTime
             },

@@ -2678,7 +2678,7 @@ The Lurniva RAG system includes 4 specialized educational APIs for comprehensive
 
 ### 1. Assignment Generation API
 
-Generate document-based assignments from book chunks with specified deadlines and requirements.
+Generate document-based assignment topics from book chunks with essay prompts and discussion topics.
 
 #### Endpoint
 ```bash
@@ -2691,10 +2691,10 @@ POST /api/v1/assignment/generate
   "book_id": "550e8400-e29b-41d4-a716-446655440000",
   "class_no": "10",
   "board": "CBSE",
-  "subject": "Physics",
-  "topic": "Electric Current",
+  "subject": "English Literature",
+  "topic": "Character Analysis",
   "assignment_type": "document",
-  "deadline_days": 5,
+  "deadline_days": 6,
   "total_marks": 20,
   "chunk_limit": 8,
   "chunk_offset": 0,
@@ -2710,8 +2710,8 @@ POST /api/v1/assignment/generate
 - **subject** (required): Subject name
 - **topic** (optional): Specific topic focus
 - **assignment_type**: Always "document" for document-based assignments
-- **deadline_days**: Number of days to complete (3-8 recommended)
-- **total_marks**: Total marks for the assignment
+- **deadline_days**: Number of days to complete (5-7 recommended)
+- **total_marks**: Total marks for the assignment (15-20)
 - **chunk_limit**: Number of document chunks to use (1-10)
 - **chunk_offset**: Starting offset for chunk selection
 - **model**: AI model to use (default: "gpt-4o-mini")
@@ -2721,20 +2721,39 @@ POST /api/v1/assignment/generate
 ```json
 {
   "success": true,
-  "assignment_title": "Electric Current Research Assignment",
-  "assignment_description": "Comprehensive research assignment on electric current principles...",
-  "assignment_questions": [
-    {
-      "question_number": 1,
-      "question": "Research and explain the relationship between voltage, current, and resistance...",
-      "marks": 5,
-      "type": "research"
-    }
-  ],
-  "total_marks": 20,
-  "deadline": "2026-02-02T23:59:59Z",
-  "instructions": "Submit a well-researched document addressing all questions...",
-  "evaluation_criteria": "Content accuracy (40%), Research depth (30%), Presentation (30%)"
+  "assignment": {
+    "title": "English Literature Assignment - Class 10",
+    "assignment_type": "Document-based Essay Assignment",
+    "instructions": "Write comprehensive essays addressing each topic. Support your analysis with examples from the provided study material.",
+    "total_marks": 20,
+    "submission_deadline_days": 6,
+    "word_count_per_topic": "400-600 words",
+    "topics": [
+      {
+        "topic_id": 1,
+        "topic_statement": "Discuss the character of Mr. Chipping as a teacher",
+        "focus_points": [
+          "How did he change from his early days at Brookfield to his retirement?",
+          "Mention his sense of humor and his relationship with his students",
+          "Analyze his teaching methods and their evolution"
+        ],
+        "objective": "To test the student's grip on character development in the novel",
+        "marks": 5,
+        "expected_elements": [
+          "Introduction with clear thesis",
+          "Analysis with examples from the novel",
+          "Logical argument development",
+          "Conclusion with personal insights"
+        ]
+      }
+    ],
+    "evaluation_criteria": [
+      "Content knowledge and understanding (40%)",
+      "Analysis and critical thinking (30%)",
+      "Use of examples from study material (20%)",
+      "Writing clarity and organization (10%)"
+    ]
+  }
 }
 ```
 
