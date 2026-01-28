@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0  
 **Base URL:** `http://localhost:3000/api/v1`  
-**Live Features:** 🎨 **AI Visual Generation** | 📚 **Smart Lectures** | 🤖 **Context-Aware Tutoring**
+**Live Features:** 🎨 **AI Visual Generation** | 📚 **Smart Lectures** | 🤖 **Context-Aware Tutoring** | 📝 **Educational Assessment**
 
 ---
 
@@ -17,6 +17,10 @@ Lurniva RAG is a **production-ready microservice** for PDF document processing, 
 - **📊 Smart Charts**: AI-generated educational data visualizations
 - **🤖 AI Tutoring**: Context-aware educational responses
 - **📚 Lecture Creation**: Complete structured lectures with visuals
+- **📝 Assignment Generation**: Document-based assignment creation
+- **🧪 Quiz Generation**: Multi-type quiz creation (MCQ, T/F, Short Answer)
+- **✅ Assignment Checking**: AI-powered grading with file upload
+- **🎯 Quiz Checking**: Automated grading for multiple question types
 - **🔐 Session Auth**: Built-in authentication for admin console
 
 ---
@@ -2665,6 +2669,298 @@ Visual generation failures are handled gracefully:
 ---
 
 ### Tutor API Endpoints
+
+---
+
+## 📝 Educational Assessment APIs
+
+The Lurniva RAG system includes 4 specialized educational APIs for comprehensive assessment and content generation based on document chunks.
+
+### 1. Assignment Generation API
+
+Generate document-based assignments from book chunks with specified deadlines and requirements.
+
+#### Endpoint
+```bash
+POST /api/v1/assignment/generate
+```
+
+#### Request Body
+```json
+{
+  "book_id": "550e8400-e29b-41d4-a716-446655440000",
+  "class_no": "10",
+  "board": "CBSE",
+  "subject": "Physics",
+  "topic": "Electric Current",
+  "assignment_type": "document",
+  "deadline_days": 5,
+  "total_marks": 20,
+  "chunk_limit": 8,
+  "chunk_offset": 0,
+  "model": "gpt-4o-mini",
+  "max_tokens": 3000
+}
+```
+
+#### Parameters
+- **book_id** (required): UUID of the book in the system
+- **class_no** (required): Class number (e.g., "10", "12")
+- **board** (required): Educational board (e.g., "CBSE", "ICSE")
+- **subject** (required): Subject name
+- **topic** (optional): Specific topic focus
+- **assignment_type**: Always "document" for document-based assignments
+- **deadline_days**: Number of days to complete (3-8 recommended)
+- **total_marks**: Total marks for the assignment
+- **chunk_limit**: Number of document chunks to use (1-10)
+- **chunk_offset**: Starting offset for chunk selection
+- **model**: AI model to use (default: "gpt-4o-mini")
+- **max_tokens**: Maximum response tokens
+
+#### Response
+```json
+{
+  "success": true,
+  "assignment_title": "Electric Current Research Assignment",
+  "assignment_description": "Comprehensive research assignment on electric current principles...",
+  "assignment_questions": [
+    {
+      "question_number": 1,
+      "question": "Research and explain the relationship between voltage, current, and resistance...",
+      "marks": 5,
+      "type": "research"
+    }
+  ],
+  "total_marks": 20,
+  "deadline": "2026-02-02T23:59:59Z",
+  "instructions": "Submit a well-researched document addressing all questions...",
+  "evaluation_criteria": "Content accuracy (40%), Research depth (30%), Presentation (30%)"
+}
+```
+
+### 2. Quiz Generation API
+
+Generate multi-type quizzes with MCQ, True/False, Short Answer, or Mixed question types.
+
+#### Endpoint
+```bash
+POST /api/v1/quiz/generate
+```
+
+#### Request Body
+```json
+{
+  "book_id": "550e8400-e29b-41d4-a716-446655440000",
+  "class_no": "10",
+  "board": "CBSE",
+  "subject": "Math",
+  "topic": "Algebra",
+  "quiz_type": "mixed",
+  "difficulty": "medium",
+  "question_count": 10,
+  "chunk_limit": 5,
+  "chunk_offset": 0,
+  "model": "gpt-4o-mini",
+  "max_tokens": 3000
+}
+```
+
+#### Parameters
+- **quiz_type**: Question type options:
+  - `"mcq"`: Multiple choice questions only
+  - `"true_false"`: True/False questions only
+  - `"short_answer"`: Short answer questions only
+  - `"mixed"`: Combination of all types
+- **difficulty**: "easy", "medium", "hard"
+- **question_count**: Number of questions (1-25)
+
+#### Response
+```json
+{
+  "success": true,
+  "quiz_title": "Algebra Quiz - Mixed Types",
+  "quiz_description": "Comprehensive quiz covering algebraic concepts",
+  "questions": [
+    {
+      "question_id": 1,
+      "question": "What is the value of x in 2x + 5 = 13?",
+      "type": "mcq",
+      "options": ["A) 4", "B) 6", "C) 8", "D) 10"],
+      "correct_answer": "A",
+      "marks": 2,
+      "explanation": "Solve: 2x = 13-5 = 8, so x = 4"
+    },
+    {
+      "question_id": 2,
+      "question": "A linear equation always has exactly one solution.",
+      "type": "true_false",
+      "correct_answer": "false",
+      "marks": 1,
+      "explanation": "Linear equations can have one, no, or infinite solutions"
+    },
+    {
+      "question_id": 3,
+      "question": "Explain the difference between a linear and quadratic equation.",
+      "type": "short_answer",
+      "correct_answer": "Linear equations have degree 1 (highest power of x is 1), while quadratic equations have degree 2 (highest power of x is 2).",
+      "marks": 3,
+      "explanation": "Key difference is the highest degree of the variable"
+    }
+  ],
+  "total_marks": 15,
+  "time_limit": 30,
+  "metadata": {
+    "total_questions": 10,
+    "mcq_count": 5,
+    "true_false_count": 3,
+    "short_answer_count": 2
+  }
+}
+```
+
+### 3. Assignment Checking API
+
+Check and grade assignment submissions with file upload support (PDF, Word, Text).
+
+#### Endpoint
+```bash
+POST /api/v1/assignment/check
+```
+
+#### Request (Multipart Form Data)
+```bash
+Content-Type: multipart/form-data
+
+assignment_title: "Electric Current Research Assignment"
+total_marks: "20"
+assignment_instructions: "Submit a well-researched document..."
+assignment_questions: "1. Explain Ohm's law (5 marks)..."
+student_submission: [FILE] (PDF/Word/Text document)
+```
+
+#### Parameters
+- **assignment_title** (required): Title of the assignment
+- **total_marks** (required): Total marks for grading
+- **assignment_instructions** (required): Assignment instructions
+- **assignment_questions** (required): List of assignment questions
+- **student_submission** (required): File upload (PDF, DOC, DOCX, TXT)
+
+#### Response
+```json
+{
+  "success": true,
+  "marks_obtained": 16,
+  "ai_feedback": "Good understanding of concepts demonstrated. The explanation of Ohm's law is comprehensive and accurate. However, the practical applications section could be more detailed with specific examples.",
+  "completion_percent": 80
+}
+```
+
+### 4. Quiz Checking API
+
+Automated grading for all quiz question types with detailed feedback.
+
+#### Endpoint
+```bash
+POST /api/v1/quiz/check
+```
+
+#### Request Body
+```json
+{
+  "quiz_questions": [
+    {
+      "question_id": 1,
+      "question": "What is 2 + 2?",
+      "type": "mcq",
+      "options": ["A) 3", "B) 4", "C) 5", "D) 6"],
+      "correct_answer": "B",
+      "marks": 2,
+      "explanation": "Basic addition"
+    },
+    {
+      "question_id": 2,
+      "question": "The Earth is flat.",
+      "type": "true_false",
+      "correct_answer": "false",
+      "marks": 1,
+      "explanation": "The Earth is spherical"
+    }
+  ],
+  "student_answers": [
+    {"question_id": 1, "answer": "B"},
+    {"question_id": 2, "answer": "false"}
+  ],
+  "quiz_title": "Sample Quiz",
+  "total_marks": 10
+}
+```
+
+#### Parameters
+- **quiz_questions** (required): Array of questions from quiz generation
+- **student_answers** (required): Array of student responses
+- **quiz_title** (required): Title of the quiz
+- **total_marks** (required): Total possible marks
+
+#### Response
+```json
+{
+  "success": true,
+  "marks_obtained": 8,
+  "ai_feedback": "You scored 8 out of 10 questions correctly (80%). Good job! You have a solid grasp of the concepts.",
+  "completion_percent": 80,
+  "detailed_results": {
+    "total_questions": 10,
+    "correct_answers": 8,
+    "grade": "B+",
+    "question_results": [
+      {
+        "question_id": 1,
+        "question": "What is 2 + 2?",
+        "type": "mcq",
+        "correct_answer": "B",
+        "student_answer": "B",
+        "is_correct": true,
+        "marks_awarded": 2,
+        "max_marks": 2,
+        "explanation": "Basic addition"
+      }
+    ]
+  }
+}
+```
+
+### Question Type Support
+
+| Type | Description | Answer Format | Grading Method |
+|------|-------------|---------------|----------------|
+| **MCQ** | Multiple choice with options A, B, C, D | "A", "B", "C", or "D" | Exact match |
+| **True/False** | Boolean questions | "true" or "false" | Exact match |
+| **Short Answer** | Open-ended text responses | Free text string | Similarity scoring + partial marks |
+| **Mixed** | Combination of all types | Based on question type | Type-specific grading |
+
+### Error Handling
+
+All educational APIs return standardized error responses:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "MISSING_BOOK_ID",
+    "message": "book_id is required and must be a valid UUID"
+  }
+}
+```
+
+### Common Error Codes
+- `MISSING_BOOK_ID`: Book ID not provided or invalid
+- `INVALID_CHUNKS`: No content chunks found for the book
+- `INVALID_ANSWERS`: Student answers array is malformed
+- `FILE_UPLOAD_ERROR`: Issues with file processing
+- `AI_GENERATION_ERROR`: AI model response issues
+- `JSON_PARSE_ERROR`: Response parsing failures
+
+---
 
 ## Support
 

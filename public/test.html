@@ -515,9 +515,9 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         <div class="output" id="searchAskOutput"></div>
       </div>
 
-      <!-- Assignment Generation -->
+      <!-- Assignment Topics Generation -->
       <div class="card full-width">
-        <h2><span class="method post">POST</span> 📝 Generate Assignment</h2>
+        <h2><span class="method post">POST</span> 📝 Generate Assignment Topics</h2>
         <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/assignment/generate</p>
         
         <div class="form-group">
@@ -541,13 +541,13 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         </div>
 
         <div class="form-group">
-          <label>Topic (Optional)</label>
+          <label>Focus Area (Optional)</label>
           <input type="text" id="assignmentTopic" placeholder="e.g., Newton's Laws, Photosynthesis, Chemical Bonding">
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="form-group">
-            <label>Content Chunks Limit <span class="tooltip" title="Number of text sections from the book to use for assignment generation">ℹ️</span></label>
+            <label>Content Chunks Limit <span class="tooltip" title="Number of text sections from the book to analyze for topic generation">ℹ️</span></label>
             <input type="number" id="assignmentChunkLimit" value="5" min="1" max="20">
           </div>
           <div class="form-group">
@@ -556,16 +556,7 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
           </div>
         </div>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-          <div class="form-group">
-            <label>Assignment Type</label>
-            <select id="assignmentType">
-              <option value="mixed">Mixed Questions</option>
-              <option value="essay">Essay Questions</option>
-              <option value="mcq">Multiple Choice</option>
-              <option value="short_answer">Short Answer</option>
-            </select>
-          </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="form-group">
             <label>Difficulty Level</label>
             <select id="assignmentDifficulty">
@@ -575,12 +566,12 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
             </select>
           </div>
           <div class="form-group">
-            <label>Number of Questions</label>
-            <input type="number" id="assignmentQuestionCount" value="5" min="1" max="15">
+            <label>Number of Topics</label>
+            <input type="number" id="assignmentQuestionCount" value="5" min="1" max="10">
           </div>
         </div>
         
-        <button onclick="generateAssignment()">📝 Generate Assignment</button>
+        <button onclick="generateAssignment()">📝 Generate Assignment Topics</button>
         <div class="output" id="assignmentOutput"></div>
       </div>
 
@@ -625,12 +616,13 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
           </div>
         </div>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="form-group">
             <label>Quiz Type</label>
             <select id="quizType">
               <option value="mcq" selected>Multiple Choice</option>
               <option value="true_false">True/False</option>
+              <option value="short_answer">Short Answer</option>
               <option value="mixed">Mixed Types</option>
             </select>
           </div>
@@ -646,11 +638,9 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
             <label>Questions</label>
             <input type="number" id="quizQuestionCount" value="10" min="1" max="25">
           </div>
-          <div class="form-group">
-            <label>Time Limit (min)</label>
-            <input type="number" id="quizTimeLimit" value="30" min="5" max="120">
-          </div>
         </div>
+        
+        <p style="color:#ffc107;font-size:0.9em;margin:10px 0;"><strong>⏱️ Note:</strong> AI will automatically determine the appropriate time limit based on question complexity.</p>
         
         <button onclick="generateQuiz()">🧪 Generate Quiz</button>
         <div class="output" id="quizOutput"></div>
@@ -663,38 +653,53 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="form-group">
-            <label>Assignment ID</label>
-            <input type="text" id="checkAssignmentId" placeholder="Assignment UUID">
+            <label>Assignment Title</label>
+            <input type="text" id="checkAssignmentTitle" placeholder="Physics Assignment - Class 10" value="Physics Assignment - Class 10">
           </div>
           <div class="form-group">
-            <label>Student ID (Optional)</label>
-            <input type="text" id="checkStudentId" placeholder="e.g., STU001" value="STU001">
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-          <div class="form-group">
-            <label>Class</label>
-            <input type="text" id="checkAssignmentClass" placeholder="10" value="10">
-          </div>
-          <div class="form-group">
-            <label>Board</label>
-            <input type="text" id="checkAssignmentBoard" placeholder="CBSE" value="CBSE">
-          </div>
-          <div class="form-group">
-            <label>Subject</label>
-            <input type="text" id="checkAssignmentSubject" placeholder="Physics" value="Physics">
+            <label>Total Marks</label>
+            <input type="number" id="checkTotalMarks" placeholder="10" value="10" min="1" max="50">
           </div>
         </div>
         
         <div class="form-group">
-          <label>Original Assignment Data (JSON)</label>
-          <textarea id="checkOriginalAssignment" rows="4" placeholder='{"questions": [{"question_id": 1, "question": "Explain Newton\'s first law", "marks": 10, "correct_answer": "An object at rest stays at rest...", "marking_criteria": "Full explanation with examples"}]}'></textarea>
+          <label>Assignment Instructions</label>
+          <textarea id="checkAssignmentInstructions" rows="2" placeholder="Answer all questions in detail. Support your answers with examples from the content.">Answer all questions in detail. Support your answers with examples from the content.</textarea>
         </div>
         
         <div class="form-group">
-          <label>Student Answers (JSON Array)</label>
-          <textarea id="checkStudentAnswers" rows="4" placeholder='[{"question_id": 1, "answer": "Newton\'s first law states that an object at rest will stay at rest unless acted upon by an external force..."}]'></textarea>
+          <label>Assignment Questions (JSON Array)</label>
+          <textarea id="checkAssignmentQuestions" rows="6" placeholder='[{"question_id": 1, "question": "Explain the concept...", "marks": 3, "expected_length": "150-200 words", "marking_criteria": "Understanding, clarity, examples"}]'>[
+  {
+    "question_id": 1,
+    "question": "Discuss the exceptional qualities of the place where the astrologer built his business. Provide specific examples from the text to support your answer.",
+    "marks": 3,
+    "expected_length": "150-200 words",
+    "marking_criteria": "Clarity of thought, depth of analysis, relevance of examples"
+  },
+  {
+    "question_id": 2,
+    "question": "Analyze the reasons behind the astrologer's decision to remain silent until the other person spoke for ten minutes. What does this reveal about his character?",
+    "marks": 4,
+    "expected_length": "200-250 words",
+    "marking_criteria": "Insightfulness of analysis, connection to character traits, use of textual evidence"
+  },
+  {
+    "question_id": 3,
+    "question": "Evaluate the tactics used by the astrologer to earn his wages. How do these tactics reflect his understanding of human nature?",
+    "marks": 3,
+    "expected_length": "150-200 words",
+    "marking_criteria": "Critical thinking, relevance of tactics discussed, examples from the text"
+  }
+]</textarea>
+        </div>
+        
+        <div class="form-group">
+          <label>📄 Student Submission File</label>
+          <input type="file" id="checkStudentSubmissionFile" accept=".pdf,.doc,.docx,.txt" style="padding:12px;border:2px dashed #ddd;border-radius:8px;background:#f9f9f9;">
+          <p style="color:#666;font-size:0.85em;margin-top:5px;">
+            📎 Upload PDF, Word document (.doc, .docx), or text file (.txt) - Max 10MB
+          </p>
         </div>
         
         <button onclick="checkAssignment()">✅ Grade Assignment</button>
@@ -706,44 +711,48 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         <h2><span class="method post">POST</span> 🎯 Check Quiz/Test</h2>
         <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/quiz/check</p>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="form-group">
-            <label>Quiz ID</label>
-            <input type="text" id="checkQuizId" placeholder="Quiz UUID">
+            <label>Quiz Title <span style="color: red;">*</span></label>
+            <input type="text" id="checkQuizTitle" placeholder="Sample Quiz" value="Sample Quiz">
           </div>
           <div class="form-group">
-            <label>Student ID</label>
-            <input type="text" id="checkQuizStudentId" placeholder="STU001" value="STU001">
-          </div>
-          <div class="form-group">
-            <label>Time Taken (seconds)</label>
-            <input type="number" id="checkQuizTimeTaken" placeholder="1800" value="1800">
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-          <div class="form-group">
-            <label>Class</label>
-            <input type="text" id="checkQuizClass" placeholder="10" value="10">
-          </div>
-          <div class="form-group">
-            <label>Board</label>
-            <input type="text" id="checkQuizBoard" placeholder="CBSE" value="CBSE">
-          </div>
-          <div class="form-group">
-            <label>Subject</label>
-            <input type="text" id="checkQuizSubject" placeholder="Physics" value="Physics">
+            <label>Total Marks <span style="color: red;">*</span></label>
+            <input type="number" id="checkQuizTotalMarks" placeholder="10" value="10" min="1">
           </div>
         </div>
         
         <div class="form-group">
-          <label>Original Quiz Data (JSON)</label>
-          <textarea id="checkOriginalQuiz" rows="3" placeholder='{"questions": [{"question_id": 1, "correct_answer": "A", "marks": 1}, {"question_id": 2, "correct_answer": "B", "marks": 1}]}'></textarea>
+          <label>Quiz Questions (JSON Array) <span style="color: red;">*</span></label>
+          <textarea id="checkQuizQuestions" rows="8" placeholder='[
+  {
+    "question_id": 1,
+    "question": "What is 2 + 2?",
+    "type": "mcq",
+    "options": ["A) 3", "B) 4", "C) 5", "D) 6"],
+    "correct_answer": "B",
+    "marks": 2,
+    "explanation": "Basic addition"
+  },
+  {
+    "question_id": 2,
+    "question": "The Earth is flat.",
+    "type": "true_false",
+    "correct_answer": "false",
+    "marks": 1,
+    "explanation": "The Earth is spherical"
+  }
+]'></textarea>
+          <small style="color:#888;">Copy questions from quiz generation output above</small>
         </div>
         
         <div class="form-group">
-          <label>Student Quiz Answers (JSON Array)</label>
-          <textarea id="checkQuizAnswers" rows="3" placeholder='[{"question_id": 1, "selected_answer": "A"}, {"question_id": 2, "selected_answer": "C"}]'></textarea>
+          <label>Student Answers (JSON Array) <span style="color: red;">*</span></label>
+          <textarea id="checkStudentAnswers" rows="4" placeholder='[
+  {"question_id": 1, "answer": "B"},
+  {"question_id": 2, "answer": "false"}
+]'></textarea>
+          <small style="color:#888;">Format: answer should match the correct format for each question type</small>
         </div>
         
         <button onclick="checkQuiz()">🎯 Grade Quiz</button>
@@ -988,7 +997,7 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       }
     }
 
-    // Generate Assignment
+    // Generate Assignment Topics
     async function generateAssignment() {
       const bookId = document.getElementById('assignmentBookId').value.trim();
       const classNo = document.getElementById('assignmentClass').value.trim();
@@ -997,9 +1006,8 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       const topic = document.getElementById('assignmentTopic').value.trim();
       const chunkLimit = parseInt(document.getElementById('assignmentChunkLimit').value) || 5;
       const chunkOffset = parseInt(document.getElementById('assignmentChunkOffset').value) || 0;
-      const assignmentType = document.getElementById('assignmentType').value;
       const difficulty = document.getElementById('assignmentDifficulty').value;
-      const questionCount = parseInt(document.getElementById('assignmentQuestionCount').value) || 5;
+      const topicCount = parseInt(document.getElementById('assignmentQuestionCount').value) || 5;
 
       if (!bookId || !classNo || !board || !subject) {
         showOutput('assignmentOutput', { error: 'Book ID, Class, Board, and Subject are required' }, true);
@@ -1019,9 +1027,8 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
             topic: topic || undefined,
             chunk_limit: chunkLimit,
             chunk_offset: chunkOffset,
-            assignment_type: assignmentType,
             difficulty: difficulty,
-            question_count: questionCount
+            question_count: topicCount
           })
         });
         const data = await res.json();
@@ -1043,7 +1050,6 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
       const quizType = document.getElementById('quizType').value;
       const difficulty = document.getElementById('quizDifficulty').value;
       const questionCount = parseInt(document.getElementById('quizQuestionCount').value) || 10;
-      const timeLimit = parseInt(document.getElementById('quizTimeLimit').value) || 30;
 
       if (!bookId || !classNo || !board || !subject) {
         showOutput('quizOutput', { error: 'Book ID, Class, Board, and Subject are required' }, true);
@@ -1065,8 +1071,7 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
             chunk_offset: chunkOffset,
             quiz_type: quizType,
             difficulty: difficulty,
-            question_count: questionCount,
-            time_limit: timeLimit
+            question_count: questionCount
           })
         });
         const data = await res.json();
@@ -1078,43 +1083,65 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
 
     // Check Assignment
     async function checkAssignment() {
-      const assignmentId = document.getElementById('checkAssignmentId').value.trim();
-      const studentId = document.getElementById('checkStudentId').value.trim();
-      const classNo = document.getElementById('checkAssignmentClass').value.trim();
-      const board = document.getElementById('checkAssignmentBoard').value.trim();
-      const subject = document.getElementById('checkAssignmentSubject').value.trim();
-      const originalAssignmentText = document.getElementById('checkOriginalAssignment').value.trim();
-      const studentAnswersText = document.getElementById('checkStudentAnswers').value.trim();
+      const assignmentTitle = document.getElementById('checkAssignmentTitle').value.trim();
+      const totalMarks = document.getElementById('checkTotalMarks').value.trim();
+      const assignmentInstructions = document.getElementById('checkAssignmentInstructions').value.trim();
+      const assignmentQuestionsText = document.getElementById('checkAssignmentQuestions').value.trim();
+      const fileInput = document.getElementById('checkStudentSubmissionFile');
 
-      if (!assignmentId || !originalAssignmentText || !studentAnswersText) {
-        showOutput('checkAssignmentOutput', { error: 'Assignment ID, Original Assignment Data, and Student Answers are required' }, true);
+      // Validation
+      if (!assignmentTitle || !totalMarks || !assignmentInstructions || !assignmentQuestionsText) {
+        showOutput('checkAssignmentOutput', { error: 'All fields are required: title, total marks, instructions, and questions' }, true);
         return;
       }
 
-      let originalAssignment, studentAnswers;
+      if (!fileInput.files || fileInput.files.length === 0) {
+        showOutput('checkAssignmentOutput', { error: 'Please select a document file to upload (PDF, Word, or Text)' }, true);
+        return;
+      }
+
+      const file = fileInput.files[0];
+      
+      // Validate file size (10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        showOutput('checkAssignmentOutput', { error: 'File size must be less than 10MB' }, true);
+        return;
+      }
+
+      // Validate questions JSON
+      let assignmentQuestions;
       try {
-        originalAssignment = JSON.parse(originalAssignmentText);
-        studentAnswers = JSON.parse(studentAnswersText);
+        assignmentQuestions = JSON.parse(assignmentQuestionsText);
+        if (!Array.isArray(assignmentQuestions)) {
+          throw new Error('Questions must be an array');
+        }
       } catch (e) {
-        showOutput('checkAssignmentOutput', { error: 'Invalid JSON in assignment data or student answers' }, true);
+        showOutput('checkAssignmentOutput', { error: 'Invalid JSON in assignment questions. Please provide a valid JSON array.' }, true);
+        return;
+      }
+
+      // Validate total marks
+      const totalMarksNum = parseInt(totalMarks);
+      if (isNaN(totalMarksNum) || totalMarksNum <= 0) {
+        showOutput('checkAssignmentOutput', { error: 'Total marks must be a positive number' }, true);
         return;
       }
 
       showLoading('checkAssignmentOutput');
+      
       try {
+        const formData = new FormData();
+        formData.append('student_submission_file', file);
+        formData.append('total_marks', totalMarksNum);
+        formData.append('assignment_title', assignmentTitle);
+        formData.append('assignment_questions', JSON.stringify(assignmentQuestions));
+        formData.append('assignment_instructions', assignmentInstructions);
+
         const res = await fetch(`${API_BASE}/assignment/check`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            assignment_id: assignmentId,
-            student_id: studentId,
-            class_no: classNo,
-            board: board,
-            subject: subject,
-            assignment_data: originalAssignment,
-            student_answers: studentAnswers
-          })
+          body: formData
         });
+        
         const data = await res.json();
         showOutput('checkAssignmentOutput', data, !data.success);
       } catch (e) {
@@ -1124,26 +1151,28 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
 
     // Check Quiz
     async function checkQuiz() {
-      const quizId = document.getElementById('checkQuizId').value.trim();
-      const studentId = document.getElementById('checkQuizStudentId').value.trim();
-      const timeTaken = parseInt(document.getElementById('checkQuizTimeTaken').value) || 0;
-      const classNo = document.getElementById('checkQuizClass').value.trim();
-      const board = document.getElementById('checkQuizBoard').value.trim();
-      const subject = document.getElementById('checkQuizSubject').value.trim();
-      const originalQuizText = document.getElementById('checkOriginalQuiz').value.trim();
-      const quizAnswersText = document.getElementById('checkQuizAnswers').value.trim();
+      const quizTitle = document.getElementById('checkQuizTitle').value.trim();
+      const totalMarks = document.getElementById('checkQuizTotalMarks').value.trim();
+      const quizQuestionsText = document.getElementById('checkQuizQuestions').value.trim();
+      const studentAnswersText = document.getElementById('checkStudentAnswers').value.trim();
 
-      if (!quizId || !originalQuizText || !quizAnswersText) {
-        showOutput('checkQuizOutput', { error: 'Quiz ID, Original Quiz Data, and Quiz Answers are required' }, true);
+      if (!quizTitle || !totalMarks || !quizQuestionsText || !studentAnswersText) {
+        showOutput('checkQuizOutput', { error: 'All fields are required: Quiz Title, Total Marks, Quiz Questions, and Student Answers' }, true);
         return;
       }
 
-      let originalQuiz, quizAnswers;
+      let quizQuestions, studentAnswers;
       try {
-        originalQuiz = JSON.parse(originalQuizText);
-        quizAnswers = JSON.parse(quizAnswersText);
+        quizQuestions = JSON.parse(quizQuestionsText);
+        studentAnswers = JSON.parse(studentAnswersText);
       } catch (e) {
-        showOutput('checkQuizOutput', { error: 'Invalid JSON in quiz data or quiz answers' }, true);
+        showOutput('checkQuizOutput', { error: 'Invalid JSON in quiz questions or student answers: ' + e.message }, true);
+        return;
+      }
+
+      // Validate JSON structure
+      if (!Array.isArray(quizQuestions) || !Array.isArray(studentAnswers)) {
+        showOutput('checkQuizOutput', { error: 'Quiz questions and student answers must be arrays' }, true);
         return;
       }
 
@@ -1153,14 +1182,10 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            quiz_id: quizId,
-            student_id: studentId,
-            time_taken: timeTaken,
-            class_no: classNo,
-            board: board,
-            subject: subject,
-            quiz_data: originalQuiz,
-            student_answers: quizAnswers
+            quiz_questions: quizQuestions,
+            student_answers: studentAnswers,
+            quiz_title: quizTitle,
+            total_marks: parseInt(totalMarks)
           })
         });
         const data = await res.json();

@@ -171,6 +171,27 @@ const upload = multer({
   }
 });
 
+// Multer configuration for assignment document uploads
+const uploadAssignment = multer({
+  storage: multer.memoryStorage(), // Store in memory for processing
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, Word documents (.doc, .docx), and text files are allowed'));
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
+
 // Ensure uploads directory exists
 if (!fs.existsSync('./uploads')) {
   fs.mkdirSync('./uploads', { recursive: true });
@@ -512,17 +533,417 @@ async function extractPDFText(filePath) {
   throw new Error('Could not extract text from PDF');
 }
 
+// Extract text from various document formats for assignment submissions
+async function extractDocumentText(fileBuffer, mimetype, originalName) {
+  try {
+    if (mimetype === 'text/plain') {
+      return fileBuffer.toString('utf-8');
+    }
+    
+    if (mimetype === 'application/pdf') {
+      const data = await pdfParse(fileBuffer);
+      return data.text;
+    }
+    
+    if (mimetype === 'application/msword' || mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      // For Word documents, we'll extract what we can or ask user to convert to PDF/TXT
+      throw new Error('Word document support limited. Please upload as PDF or TXT file.');
+    }
+    
+    throw new Error(`Unsupported file type: ${mimetype}`);
+  } catch (error) {
+    throw new Error(`Failed to extract text from ${originalName}: ${error.message}`);
+  }
+}
+
 // Helper function to clean JSON from markdown formatting
+// Generate interactive HTML quiz
+function generateInteractiveQuizHTML(quizData) {
+  const quiz = quizData.quiz;
+  const timeLimit = quiz.time_limit || 30;
+  
+  // Build questions HTML
+  let questionsHTML = '';
+  quiz.questions.forEach((q, index) => {
+    questionsHTML += `
+    <div class="question">
+      <h3>${q.question_id}. ${q.question}</h3>
+      <div class="options">
+        ${q.options.map(option => {
+          const optionLetter = option.charAt(0);
+          return `
+          <div class="option" onclick="selectOption(this, ${q.question_id}, '${optionLetter}')">
+            <input type="radio" name="q${q.question_id}" value="${optionLetter}">
+            <label>${option}</label>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  });
+  
+  // Build correct answers object for JavaScript
+  const correctAnswers = {};
+  quiz.questions.forEach(q => {
+    correctAnswers[q.question_id] = q.correct_answer;
+  });
+  
+  // Build explanations object for JavaScript
+  const explanations = {};
+  quiz.questions.forEach(q => {
+    explanations[q.question_id] = q.explanation;
+  });
+  
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${quiz.title}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .timer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        .quiz-info {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .quiz-info p {
+            margin: 5px 0;
+            font-size: 16px;
+        }
+        .quiz-content {
+            padding: 30px;
+        }
+        .question {
+            margin: 30px 0;
+            padding: 25px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        .question:hover {
+            border-color: #007bff;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.1);
+        }
+        .question h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .options {
+            display: grid;
+            gap: 10px;
+        }
+        .option {
+            padding: 15px 20px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+            display: flex;
+            align-items: center;
+        }
+        .option:hover {
+            background: #e3f2fd;
+            border-color: #2196F3;
+        }
+        .option.selected {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .option input[type="radio"] {
+            margin-right: 15px;
+            transform: scale(1.2);
+        }
+        .option label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 16px;
+        }
+        .submit-btn {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            display: block;
+            margin: 40px auto;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,123,255,0.4);
+        }
+        .submit-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .results {
+            margin: 30px 0;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #007bff;
+        }
+        .results h3 {
+            color: #007bff;
+            margin-bottom: 20px;
+        }
+        .result-item {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .result-item.correct {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+        .result-item.incorrect {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        .score-summary {
+            text-align: center;
+            padding: 25px;
+            margin: 20px 0;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .explanation {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 5px;
+            font-size: 14px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>${quiz.title}</h1>
+        </div>
+        
+        <div class="timer" id="timer">
+            ⏰ Time: <span id="time">${timeLimit}:00</span>
+        </div>
+        
+        <div class="quiz-info">
+            <p><strong>Instructions:</strong> ${quiz.instructions}</p>
+            <p><strong>Total Questions:</strong> ${quiz.questions.length} | <strong>Total Marks:</strong> ${quiz.total_marks} | <strong>Time Limit:</strong> ${timeLimit} minutes</p>
+        </div>
+        
+        <div class="quiz-content">
+            <form id="quizForm">
+                ${questionsHTML}
+            </form>
+            
+            <button class="submit-btn" onclick="submitQuiz()" id="submitBtn">
+                📝 Submit Quiz
+            </button>
+            
+            <div id="results" style="display:none;" class="results">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timeLeft = ${timeLimit} * 60;
+        let answers = {};
+        let quizSubmitted = false;
+        const correctAnswers = ${JSON.stringify(correctAnswers)};
+        const explanations = ${JSON.stringify(explanations)};
+
+        // Timer function
+        function updateTimer() {
+            if (quizSubmitted) return;
+            
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('time').textContent = 
+                minutes + ':' + seconds.toString().padStart(2, '0');
+            
+            if (timeLeft <= 0) {
+                alert('Time is up! Submitting quiz automatically.');
+                submitQuiz();
+                return;
+            }
+            timeLeft--;
+        }
+
+        // Start timer
+        const timerInterval = setInterval(updateTimer, 1000);
+
+        // Option selection function
+        function selectOption(element, questionId, optionValue) {
+            // Remove selected class from all options in this question
+            const questionDiv = element.closest('.question');
+            questionDiv.querySelectorAll('.option').forEach(opt => 
+                opt.classList.remove('selected'));
+            
+            // Add selected class to clicked option
+            element.classList.add('selected');
+            element.querySelector('input').checked = true;
+            
+            // Store answer
+            answers[questionId] = optionValue;
+            
+            console.log('Selected:', questionId, optionValue);
+        }
+
+        // Submit quiz function
+        function submitQuiz() {
+            if (quizSubmitted) return;
+            
+            quizSubmitted = true;
+            clearInterval(timerInterval);
+            
+            let score = 0;
+            let totalQuestions = Object.keys(correctAnswers).length;
+            let resultsHTML = '<h3>📊 Quiz Results</h3>';
+            
+            // Calculate score and generate results
+            Object.keys(correctAnswers).forEach(questionId => {
+                const userAnswer = answers[questionId];
+                const correctAnswer = correctAnswers[questionId];
+                const explanation = explanations[questionId];
+                
+                if (userAnswer === correctAnswer) {
+                    score++;
+                    resultsHTML += \`
+                        <div class="result-item correct">
+                            <span>Question \${questionId}: ✅ Correct</span>
+                            <span>Your answer: \${userAnswer}</span>
+                        </div>
+                        <div class="explanation">💡 \${explanation}</div>
+                    \`;
+                } else {
+                    resultsHTML += \`
+                        <div class="result-item incorrect">
+                            <span>Question \${questionId}: ❌ Incorrect</span>
+                            <span>Correct answer: \${correctAnswer}</span>
+                        </div>
+                        <div class="explanation">💡 \${explanation}</div>
+                    \`;
+                }
+            });
+            
+            const percentage = Math.round((score / totalQuestions) * 100);
+            let gradeColor = percentage >= 80 ? '#28a745' : percentage >= 60 ? '#ffc107' : '#dc3545';
+            
+            resultsHTML += \`
+                <div class="score-summary" style="background: \${gradeColor}">
+                    🎯 Final Score: \${score}/\${totalQuestions} (\${percentage}%)
+                    <br>
+                    <span style="font-size: 18px;">
+                        \${percentage >= 80 ? '🌟 Excellent!' : 
+                          percentage >= 60 ? '👍 Good Job!' : '📚 Keep Studying!'}
+                    </span>
+                </div>
+            \`;
+            
+            // Show results and hide form
+            document.getElementById('results').innerHTML = resultsHTML;
+            document.getElementById('results').style.display = 'block';
+            document.getElementById('quizForm').style.display = 'none';
+            document.getElementById('submitBtn').style.display = 'none';
+            document.getElementById('timer').style.display = 'none';
+            
+            // Scroll to results
+            document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Prevent form submission
+        document.getElementById('quizForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitQuiz();
+        });
+    </script>
+</body>
+</html>`;
+}
+
 function cleanJsonFromMarkdown(content) {
   // Remove markdown code blocks
   let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*$/gi, '');
   
-  // Remove any leading/trailing whitespace
+  // Remove any remaining code blocks
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, '');
+  
+  // Remove leading/trailing whitespace
   cleaned = cleaned.trim();
   
   // If it still starts with backticks, remove them
   if (cleaned.startsWith('`')) {
     cleaned = cleaned.replace(/^`+/, '').replace(/`+$/, '');
+  }
+  
+  // Remove any leading/trailing markdown
+  cleaned = cleaned.replace(/^#+\s*.*$/gm, ''); // Remove headers
+  cleaned = cleaned.replace(/^\*\*.*?\*\*$/gm, ''); // Remove bold text
+  cleaned = cleaned.replace(/^Here's.*?:/gm, ''); // Remove intro text
+  cleaned = cleaned.replace(/^The.*?:/gm, ''); // Remove explanation text
+  
+  // Clean up extra whitespace
+  cleaned = cleaned.trim();
+  
+  // Find JSON object boundaries
+  const startIndex = cleaned.indexOf('{');
+  const lastIndex = cleaned.lastIndexOf('}');
+  
+  if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+    cleaned = cleaned.substring(startIndex, lastIndex + 1);
   }
   
   return cleaned;
@@ -1841,55 +2262,59 @@ app.post("/api/v1/assignment/generate", async (req, res) => {
     }).join('\n\n');
 
     // Create assignment prompt
-    const assignmentPrompt = `You are an expert educator creating assignments for ${subject} (Class ${class_no}, ${board} Board).
+    const assignmentPrompt = `You are an expert educator creating document-based assignment questions for ${subject} (Class ${class_no}, ${board} Board).
 
-CONTENT TO BASE ASSIGNMENT ON:
+CONTENT TO ANALYZE:
 ${contentText}
 
 ASSIGNMENT REQUIREMENTS:
-- Type: ${assignment_type}
+- Generate ${question_count} assignment questions based ONLY on the provided content
+- Students will answer ALL questions in a single document submission
+- Total marks: 10-12 marks distributed across questions
+- Submission deadline: 3-8 days from assignment date
 - Difficulty Level: ${difficulty}
-- Number of Questions: ${question_count}
 - Class Level: ${class_no}
 - Board: ${board}
 - Subject: ${subject}
-${topic ? `- Focus Topic: ${topic}` : ''}
+${topic ? `- Focus Area: ${topic}` : ''}
 
 INSTRUCTIONS:
-1. Create ONLY questions based on the provided content
-2. DO NOT use external knowledge beyond the given text
-3. Questions must be age-appropriate for Class ${class_no}
-4. Follow ${board} board examination patterns
-5. Include a marking scheme with point allocation
-6. Return response in JSON format ONLY - NO markdown, NO code blocks, NO extra formatting
+1. Create questions that require written responses in document format
+2. Base questions ONLY on the provided content
+3. No presentations, projects, or oral work - only written document submission
+4. Questions should test comprehension, analysis, and application
+5. Age-appropriate for Class ${class_no}
+6. Follow ${board} board curriculum standards
+7. Return response in JSON format ONLY - NO markdown, NO code blocks
 
-IMPORTANT: Return ONLY valid JSON. Do not wrap in code blocks or any markdown formatting.
-
-JSON STRUCTURE REQUIRED:
+RETURN ONLY THIS JSON:
 {
   "assignment": {
-    "title": "Assignment Title",
-    "instructions": "Student instructions",
-    "total_marks": 100,
-    "time_limit": "60 minutes",
+    "title": "${subject} Assignment - Class ${class_no}",
+    "instructions": "Answer ALL questions in a single document. Submit within 3-8 days. Write clear, detailed responses with proper explanations.",
+    "total_marks": 10,
+    "submission_deadline_days": 5,
+    "submission_format": "Document (PDF/Word)",
     "questions": [
       {
         "question_id": 1,
-        "type": "essay|mcq|short_answer",
-        "question": "Question text here",
-        "marks": 10,
-        "options": ["A) Option", "B) Option", "C) Option", "D) Option"], // Only for MCQ
-        "correct_answer": "Answer for grading reference",
-        "marking_criteria": "How to evaluate this answer",
-        "difficulty": "easy|medium|hard"
+        "question": "Question text here based on provided content",
+        "marks": 2,
+        "expected_length": "100-150 words",
+        "marking_criteria": "Understanding of concept, clarity of explanation, use of examples from content"
       }
+    ],
+    "general_instructions": [
+      "Read all questions carefully before starting",
+      "Base your answers only on the provided study material",
+      "Write in clear, complete sentences",
+      "Support your answers with examples from the content",
+      "Minimum word count must be maintained for each question"
     ]
   }
-}
+}`;
 
-Generate ${question_count} questions of type ${assignment_type} with ${difficulty} difficulty level.`;
-
-    console.log(`   Generating assignment from ${selectedChunks.length} chunks...`);
+    console.log(`   Generating assignment questions from ${selectedChunks.length} chunks...`);
 
     // Call OpenAI API
     const OpenAI = await import('openai').then(module => module.default);
@@ -1904,7 +2329,7 @@ Generate ${question_count} questions of type ${assignment_type} with ${difficult
       messages: [
         {
           role: "system",
-          content: `You are an expert educator specializing in ${subject} for ${board} board. Create assignments in JSON format only. Return ONLY valid JSON without any markdown formatting, code blocks, or extra text. Follow the exact structure provided.`
+          content: `You are an expert educator specializing in ${subject} for ${board} board. Generate assignment topics in JSON format only. Return ONLY valid JSON without any markdown formatting, code blocks, or extra text. Follow the exact structure provided.`
         },
         {
           role: "user",
@@ -1924,7 +2349,7 @@ Generate ${question_count} questions of type ${assignment_type} with ${difficult
       const cleanedContent = cleanJsonFromMarkdown(assignmentContent);
       const assignmentData = JSON.parse(cleanedContent);
       
-      console.log(`   ✓ Assignment generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+      console.log(`   ✓ Assignment questions generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
 
       res.json({
         success: true,
@@ -1937,9 +2362,11 @@ Generate ${question_count} questions of type ${assignment_type} with ${difficult
             class_no: class_no,
             board: board,
             subject: subject,
-            topic: topic || "Generated from book content",
+            focus_area: topic || "Generated from book content",
             difficulty: difficulty,
-            assignment_type: assignment_type,
+            question_count: assignmentData.assignment.questions.length,
+            total_marks: assignmentData.assignment.total_marks,
+            submission_deadline_days: assignmentData.assignment.submission_deadline_days,
             chunks_used: {
               total_available: totalChunks,
               used_count: selectedChunks.length,
@@ -1951,7 +2378,7 @@ Generate ${question_count} questions of type ${assignment_type} with ${difficult
             generation_settings: {
               model_used: model,
               max_tokens: max_tokens,
-              question_count: question_count,
+              questions_requested: question_count,
               tokens_used: tokensUsed,
               response_time_ms: responseTime
             },
@@ -2008,7 +2435,6 @@ app.post("/api/v1/quiz/generate", async (req, res) => {
       difficulty = "medium",
       question_count = 10,
       quiz_type = "mcq", // mcq, true_false, mixed
-      time_limit = 30, // minutes
       model = "gpt-4o-mini",
       max_tokens = 2500
     } = req.body;
@@ -2049,49 +2475,71 @@ app.post("/api/v1/quiz/generate", async (req, res) => {
       `Section ${index + 1}:\n${chunk.text}`
     ).join('\n\n');
 
-    const quizPrompt = `Create a ${quiz_type} quiz for ${subject} (Class ${class_no}, ${board} Board) based ONLY on the provided content.
+    const quizPrompt = `Create a ${quiz_type} quiz based ONLY on the provided content.
 
 CONTENT:
 ${contentText}
 
-QUIZ REQUIREMENTS:
-- Type: ${quiz_type}
+REQUIREMENTS:
+- Subject: ${subject} (Class ${class_no}, ${board} Board)
 - Questions: ${question_count}
+- Question Types: ${quiz_type}
 - Difficulty: ${difficulty}
-- Time Limit: ${time_limit} minutes
 ${topic ? `- Focus Topic: ${topic}` : ''}
 
-IMPORTANT RULES:
-1. Questions MUST be based ONLY on the provided content
-2. DO NOT use external knowledge
-3. Age-appropriate for Class ${class_no}
-4. Follow ${board} examination patterns
-5. Include correct answers and explanations
-6. Return ONLY valid JSON - NO markdown formatting or code blocks
+QUESTION TYPE FORMATS:
+1. Multiple Choice (mcq): 4 options with letters A, B, C, D
+2. True/False (true_false): Only True or False options
+3. Short Answer (short_answer): No options, just correct answer text
+4. Mixed (mixed): Combination of all types
 
-JSON FORMAT REQUIRED (return ONLY this JSON structure):
+RULES:
+1. Base questions ONLY on provided content
+2. Return ONLY valid JSON (no markdown, no HTML)
+3. Determine appropriate time limit (15-60 minutes)
+4. Include detailed explanations for each answer
+5. For mixed quizzes, use variety of question types
+
+RETURN ONLY THIS JSON:
 {
   "quiz": {
-    "title": "Quiz Title",
-    "instructions": "Quiz instructions for students",
-    "time_limit": ${time_limit},
-    "total_marks": ${question_count * 1},
+    "title": "${subject} Quiz - Class ${class_no}",
+    "instructions": "Read each question carefully and provide your answer.",
+    "time_limit": 30,
+    "total_marks": ${question_count},
     "questions": [
       {
         "question_id": 1,
-        "type": "${quiz_type}",
-        "question": "Question text",
-        "options": ["A) Option", "B) Option", "C) Option", "D) Option"],
+        "type": "mcq",
+        "question": "Question text based on content",
+        "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
         "correct_answer": "A",
-        "explanation": "Why this answer is correct",
-        "marks": 1,
-        "difficulty": "${difficulty}"
+        "explanation": "Detailed explanation of correct answer",
+        "marks": 1
+      },
+      {
+        "question_id": 2,
+        "type": "true_false",
+        "question": "Statement to be evaluated as true or false",
+        "options": ["True", "False"],
+        "correct_answer": "True",
+        "explanation": "Explanation of why this is true/false",
+        "marks": 1
+      },
+      {
+        "question_id": 3,
+        "type": "short_answer",
+        "question": "Question requiring brief written answer",
+        "options": [],
+        "correct_answer": "Expected answer text",
+        "explanation": "Key points that should be in the answer",
+        "marks": 1
       }
     ]
   }
 }
 
-Generate exactly ${question_count} questions.`;
+Generate exactly ${question_count} questions based on quiz type "${quiz_type}".`;
 
     const OpenAI = await import('openai').then(module => module.default);
     const openai = new OpenAI({
@@ -2121,6 +2569,9 @@ Generate exactly ${question_count} questions.`;
 
     try {
       const cleanedContent = cleanJsonFromMarkdown(quizContent);
+      console.log(`   Raw AI response length: ${quizContent.length} chars`);
+      console.log(`   Cleaned content length: ${cleanedContent.length} chars`);
+      
       const quizData = JSON.parse(cleanedContent);
       
       console.log(`   ✓ Quiz generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
@@ -2140,7 +2591,7 @@ Generate exactly ${question_count} questions.`;
             quiz_type: quiz_type,
             difficulty: difficulty,
             question_count: question_count,
-            time_limit: time_limit,
+            ai_determined_time_limit: quizData.quiz.time_limit,
             chunks_used: selectedChunks.length,
             created_at: new Date().toISOString(),
             generation_time_ms: responseTime
@@ -2149,9 +2600,17 @@ Generate exactly ${question_count} questions.`;
       });
 
     } catch (parseError) {
+      console.error("Quiz JSON parse error:", parseError);
+      console.error("Raw AI response:", quizContent.substring(0, 500) + "...");
+      
       res.status(500).json({
         success: false,
-        error: { code: "JSON_PARSE_ERROR", message: "Failed to parse generated quiz" },
+        error: { 
+          code: "JSON_PARSE_ERROR", 
+          message: "Failed to parse generated quiz",
+          details: parseError.message,
+          response_preview: quizContent.substring(0, 300) + "..."
+        },
         raw_response: quizContent
       });
     }
@@ -2169,87 +2628,140 @@ Generate exactly ${question_count} questions.`;
  * POST /api/v1/assignment/check
  * Check and grade assignment submissions
  */
-app.post("/api/v1/assignment/check", async (req, res) => {
+app.post("/api/v1/assignment/check", uploadAssignment.single('student_submission_file'), async (req, res) => {
   try {
     const {
-      assignment_id,
-      student_answers, // Array of {question_id, answer}
-      assignment_data, // Original assignment for reference
-      class_no,
-      board,
-      subject,
+      total_marks,
+      assignment_title,
+      assignment_questions, // JSON string of questions array
+      assignment_instructions,
       model = "gpt-4o-mini",
-      max_tokens = 2000
+      max_tokens = 3000
     } = req.body;
 
-    // Validation
-    if (!student_answers || !Array.isArray(student_answers)) {
+    // Check if file was uploaded
+    if (!req.file) {
       return res.status(400).json({
         success: false,
-        error: { code: "INVALID_ANSWERS", message: "student_answers array is required" }
+        error: { 
+          code: "MISSING_FILE", 
+          message: "student_submission_file is required - please upload a document (PDF, DOC, DOCX, or TXT)" 
+        }
       });
     }
 
-    if (!assignment_data || !assignment_data.questions) {
+    // Validation of required fields
+    if (!total_marks || !assignment_title || !assignment_questions || !assignment_instructions) {
       return res.status(400).json({
         success: false,
-        error: { code: "INVALID_ASSIGNMENT", message: "assignment_data with questions is required" }
+        error: { 
+          code: "MISSING_REQUIRED_FIELDS", 
+          message: "total_marks, assignment_title, assignment_questions, and assignment_instructions are required" 
+        }
+      });
+    }
+
+    let questions;
+    try {
+      questions = JSON.parse(assignment_questions);
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUESTIONS_JSON", message: "assignment_questions must be valid JSON" }
+      });
+    }
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUESTIONS", message: "assignment_questions must be a non-empty array" }
+      });
+    }
+
+    const totalMarksNum = parseInt(total_marks);
+    if (isNaN(totalMarksNum) || totalMarksNum <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_TOTAL_MARKS", message: "total_marks must be a positive number" }
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "OPENAI_NOT_CONFIGURED", message: "OpenAI API key not configured" }
       });
     }
 
     console.log(`\n✅ Assignment Checking Request:`);
-    console.log(`   Assignment ID: ${assignment_id}`);
-    console.log(`   Answers to check: ${student_answers.length}`);
-    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Title: ${assignment_title}`);
+    console.log(`   Total Marks: ${totalMarksNum}`);
+    console.log(`   Questions: ${questions.length}`);
+    console.log(`   File: ${req.file.originalname} (${req.file.mimetype}, ${Math.round(req.file.size/1024)}KB)`);
+
+    // Extract text from uploaded document
+    let studentSubmissionText;
+    try {
+      studentSubmissionText = await extractDocumentText(
+        req.file.buffer, 
+        req.file.mimetype, 
+        req.file.originalname
+      );
+    } catch (extractError) {
+      return res.status(400).json({
+        success: false,
+        error: { 
+          code: "TEXT_EXTRACTION_ERROR", 
+          message: extractError.message 
+        }
+      });
+    }
+
+    if (!studentSubmissionText || studentSubmissionText.trim().length < 50) {
+      return res.status(400).json({
+        success: false,
+        error: { 
+          code: "INSUFFICIENT_CONTENT", 
+          message: "The submitted document appears to be empty or has insufficient content" 
+        }
+      });
+    }
+
+    console.log(`   Extracted text: ${studentSubmissionText.length} characters`);
 
     // Prepare checking prompt
-    const checkingPrompt = `You are an expert teacher grading assignments for ${subject} (Class ${class_no}, ${board} Board).
+    const checkingPrompt = `You are an expert teacher grading "${assignment_title}".
 
-ORIGINAL ASSIGNMENT QUESTIONS:
-${assignment_data.questions.map(q => `
-Question ${q.question_id} (${q.marks} marks):
-${q.question}
-Expected Answer: ${q.correct_answer}
-Marking Criteria: ${q.marking_criteria}
+ASSIGNMENT DETAILS:
+Title: ${assignment_title}
+Instructions: ${assignment_instructions}
+Total Marks: ${totalMarksNum}
+
+ASSIGNMENT QUESTIONS:
+${questions.map((q, index) => `
+${index + 1}. ${q.question}
+   Marks: ${q.marks || Math.floor(totalMarksNum / questions.length)}
+   Expected Length: ${q.expected_length || '100-200 words'}
+   Marking Criteria: ${q.marking_criteria || 'Understanding, clarity, use of examples'}
 `).join('\n')}
 
-STUDENT ANSWERS:
-${student_answers.map(ans => `
-Question ${ans.question_id}:
-Student Answer: ${ans.answer}
-`).join('\n')}
+STUDENT SUBMISSION:
+${studentSubmissionText}
 
 GRADING INSTRUCTIONS:
-1. Grade each answer based on the marking criteria
-2. Give partial marks for partially correct answers
-3. Provide constructive feedback for each answer
-4. Be fair but maintain academic standards
-5. Consider the student's class level (${class_no})
+1. Evaluate the student's submission against each question
+2. Award marks based on understanding, clarity, and completeness
+3. Look for answers to each specific question in the submission
+4. Give partial marks for partially correct answers
+5. Calculate completion percentage based on content coverage and quality
+6. Provide constructive overall feedback
 
-JSON FORMAT REQUIRED:
+RETURN ONLY THIS JSON FORMAT:
 {
-  "grading": {
-    "student_id": "${req.body.student_id || 'unknown'}",
-    "assignment_id": "${assignment_id}",
-    "total_marks": ${assignment_data.total_marks || 100},
-    "scored_marks": 0,
-    "percentage": 0,
-    "grade": "A+|A|B+|B|C+|C|D|F",
-    "overall_feedback": "Overall performance feedback",
-    "question_grades": [
-      {
-        "question_id": 1,
-        "max_marks": 10,
-        "scored_marks": 8,
-        "feedback": "Specific feedback for this answer",
-        "suggestions": "How to improve"
-      }
-    ],
-    "graded_at": "${new Date().toISOString()}"
-  }
-}
-
-Calculate total scored marks and percentage. Provide detailed feedback.`;
+  "marks_obtained": 8,
+  "ai_feedback": "Overall assessment of the submission with specific strengths and areas for improvement",
+  "completion_percent": 85
+}`;
 
     const OpenAI = await import('openai').then(module => module.default);
     const openai = new OpenAI({
@@ -2262,7 +2774,7 @@ Calculate total scored marks and percentage. Provide detailed feedback.`;
       messages: [
         {
           role: "system",
-          content: `You are an experienced teacher grading assignments for ${board} board ${subject}. Be fair, constructive, and maintain academic standards. Return ONLY valid JSON without any markdown formatting or code blocks.`
+          content: "You are an experienced teacher grading assignments. Be fair, constructive, and maintain academic standards. Return ONLY valid JSON without any markdown formatting or code blocks."
         },
         {
           role: "user",
@@ -2270,7 +2782,7 @@ Calculate total scored marks and percentage. Provide detailed feedback.`;
         }
       ],
       max_tokens: max_tokens,
-      temperature: 0.2, // Lower temperature for consistent grading
+      temperature: 0.3,
     });
 
     const responseTime = Date.now() - startTime;
@@ -2281,42 +2793,42 @@ Calculate total scored marks and percentage. Provide detailed feedback.`;
       const cleanedContent = cleanJsonFromMarkdown(gradingContent);
       const gradingData = JSON.parse(cleanedContent);
       
-      console.log(`   ✓ Grading completed (${responseTime}ms)`);
-      console.log(`   📊 Score: ${gradingData.grading.scored_marks}/${gradingData.grading.total_marks} (${gradingData.grading.percentage}%)`);
+      // Extract the required output fields
+      const marks_obtained = gradingData.marks_obtained;
+      const ai_feedback = gradingData.ai_feedback;
+      const completion_percent = gradingData.completion_percent;
+      
+      console.log(`   ✓ Assignment graded (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+      console.log(`   Score: ${marks_obtained}/${totalMarksNum} (${completion_percent}%)`);
 
+      // Return only the required output fields
       res.json({
         success: true,
-        data: {
-          grading_result: gradingData.grading,
-          metadata: {
-            assignment_id: assignment_id,
-            questions_graded: student_answers.length,
-            total_questions: assignment_data.questions.length,
-            class_no: class_no,
-            board: board,
-            subject: subject,
-            grading_model: model,
-            tokens_used: tokensUsed,
-            grading_time_ms: responseTime,
-            graded_at: new Date().toISOString()
-          }
-        }
+        marks_obtained: marks_obtained,
+        ai_feedback: ai_feedback,
+        completion_percent: completion_percent
       });
 
     } catch (parseError) {
-      console.error("Failed to parse grading JSON:", parseError);
+      console.error("Assignment grading JSON parse error:", parseError);
       res.status(500).json({
         success: false,
-        error: { code: "JSON_PARSE_ERROR", message: "Failed to parse grading result" },
-        raw_response: gradingContent
+        error: { 
+          code: "JSON_PARSE_ERROR", 
+          message: "Failed to parse grading results",
+          details: parseError.message
+        }
       });
     }
 
-  } catch (err) {
-    console.error("Assignment checking error:", err);
+  } catch (error) {
+    console.error("Assignment checking error:", error);
     res.status(500).json({
       success: false,
-      error: { code: "ASSIGNMENT_CHECKING_ERROR", message: err.message }
+      error: { 
+        code: "CHECKING_ERROR", 
+        message: error.message || "Failed to check assignment"
+      }
     });
   }
 });
@@ -2328,16 +2840,22 @@ Calculate total scored marks and percentage. Provide detailed feedback.`;
 app.post("/api/v1/quiz/check", async (req, res) => {
   try {
     const {
-      quiz_id,
-      student_answers, // Array of {question_id, selected_answer}
-      quiz_data, // Original quiz for reference
-      time_taken, // in seconds
-      class_no,
-      board,
-      subject
+      quiz_questions, // Array of questions from quiz generation
+      student_answers, // Array of {question_id, answer}
+      quiz_title,
+      total_marks,
+      model = "gpt-4o-mini",
+      max_tokens = 2500
     } = req.body;
 
     // Validation
+    if (!quiz_questions || !Array.isArray(quiz_questions)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_QUIZ_QUESTIONS", message: "quiz_questions array is required" }
+      });
+    }
+
     if (!student_answers || !Array.isArray(student_answers)) {
       return res.status(400).json({
         success: false,
@@ -2345,155 +2863,154 @@ app.post("/api/v1/quiz/check", async (req, res) => {
       });
     }
 
-    if (!quiz_data || !quiz_data.questions) {
+    if (!quiz_title || !total_marks) {
       return res.status(400).json({
         success: false,
-        error: { code: "INVALID_QUIZ", message: "quiz_data with questions is required" }
+        error: { code: "MISSING_FIELDS", message: "quiz_title and total_marks are required" }
       });
     }
 
     console.log(`\n🧪 Quiz Checking Request:`);
-    console.log(`   Quiz ID: ${quiz_id}`);
+    console.log(`   Quiz: ${quiz_title}`);
+    console.log(`   Questions: ${quiz_questions.length}`);
     console.log(`   Answers submitted: ${student_answers.length}`);
-    console.log(`   Time taken: ${time_taken}s`);
+    console.log(`   Total marks: ${total_marks}`);
 
-    // Auto-grade the quiz (since it's mostly MCQ/objective)
+    // Grade the quiz
     const gradingResults = [];
-    let totalMarks = 0;
     let scoredMarks = 0;
+    const totalMarksNum = parseInt(total_marks);
 
     // Create answer map for quick lookup
     const answerMap = new Map();
     student_answers.forEach(ans => {
-      answerMap.set(ans.question_id, ans.selected_answer);
+      answerMap.set(parseInt(ans.question_id), ans.answer);
     });
 
     // Grade each question
-    quiz_data.questions.forEach(question => {
+    for (const question of quiz_questions) {
       const studentAnswer = answerMap.get(question.question_id);
       const correctAnswer = question.correct_answer;
-      const marks = question.marks || 1;
+      const questionMarks = question.marks || 1;
       
-      totalMarks += marks;
-      
-      let scored = 0;
-      let status = 'incorrect';
-      
-      if (studentAnswer) {
-        // Handle different answer formats
-        const normalizeAnswer = (ans) => {
-          if (!ans) return '';
-          return ans.toString().toLowerCase().trim();
-        };
-        
-        if (normalizeAnswer(studentAnswer) === normalizeAnswer(correctAnswer)) {
-          scored = marks;
-          status = 'correct';
-          scoredMarks += marks;
+      let isCorrect = false;
+      let marksAwarded = 0;
+
+      if (question.type === 'mcq' || question.type === 'true_false') {
+        // Exact match for MCQ and True/False
+        isCorrect = studentAnswer === correctAnswer;
+        marksAwarded = isCorrect ? questionMarks : 0;
+      } else if (question.type === 'short_answer') {
+        // For short answers, we need AI to evaluate
+        // For now, we'll do a simple comparison, but this could be enhanced with AI
+        if (studentAnswer && correctAnswer) {
+          const similarity = calculateSimilarity(studentAnswer.toLowerCase(), correctAnswer.toLowerCase());
+          if (similarity > 0.7) {
+            isCorrect = true;
+            marksAwarded = questionMarks;
+          } else if (similarity > 0.4) {
+            marksAwarded = Math.ceil(questionMarks * 0.5); // Partial marks
+          }
         }
-      } else {
-        status = 'not_attempted';
       }
+
+      scoredMarks += marksAwarded;
 
       gradingResults.push({
         question_id: question.question_id,
         question: question.question,
+        type: question.type,
         correct_answer: correctAnswer,
-        student_answer: studentAnswer || null,
-        marks: marks,
-        scored: scored,
-        status: status,
-        explanation: question.explanation || 'No explanation available'
+        student_answer: studentAnswer || "No answer provided",
+        is_correct: isCorrect,
+        marks_awarded: marksAwarded,
+        max_marks: questionMarks,
+        explanation: question.explanation
       });
-    });
-
-    // Calculate performance metrics
-    const percentage = totalMarks > 0 ? Math.round((scoredMarks / totalMarks) * 100) : 0;
-    const attempted = student_answers.length;
-    const correct = gradingResults.filter(r => r.status === 'correct').length;
-    const incorrect = gradingResults.filter(r => r.status === 'incorrect').length;
-    const notAttempted = gradingResults.filter(r => r.status === 'not_attempted').length;
-
-    // Determine grade based on percentage
-    let grade = 'F';
-    if (percentage >= 90) grade = 'A+';
-    else if (percentage >= 80) grade = 'A';
-    else if (percentage >= 70) grade = 'B+';
-    else if (percentage >= 60) grade = 'B';
-    else if (percentage >= 50) grade = 'C+';
-    else if (percentage >= 40) grade = 'C';
-    else if (percentage >= 33) grade = 'D';
-
-    // Performance feedback
-    let feedback = '';
-    if (percentage >= 90) {
-      feedback = 'Excellent performance! You have mastered this topic.';
-    } else if (percentage >= 70) {
-      feedback = 'Good work! You have a solid understanding of the material.';
-    } else if (percentage >= 50) {
-      feedback = 'Fair performance. Review the topics you found challenging.';
-    } else {
-      feedback = 'Needs improvement. Please review the material and practice more.';
     }
 
-    // Time performance analysis
-    const expectedTime = quiz_data.time_limit * 60; // Convert minutes to seconds
-    let timePerformance = 'optimal';
-    if (time_taken < expectedTime * 0.3) {
-      timePerformance = 'too_fast';
-      feedback += ' Consider spending more time reading questions carefully.';
-    } else if (time_taken > expectedTime) {
-      timePerformance = 'overtime';
-      feedback += ' Work on time management for future quizzes.';
-    }
+    const percentage = Math.round((scoredMarks / totalMarksNum) * 100);
+    const grade = getLetterGrade(percentage);
 
-    console.log(`   ✓ Quiz graded automatically`);
-    console.log(`   📊 Score: ${scoredMarks}/${totalMarks} (${percentage}%) - Grade: ${grade}`);
+    console.log(`   ✓ Quiz graded: ${scoredMarks}/${totalMarksNum} (${percentage}%)`);
 
     res.json({
       success: true,
-      data: {
-        quiz_result: {
-          quiz_id: quiz_id,
-          student_id: req.body.student_id || 'unknown',
-          total_questions: quiz_data.questions.length,
-          total_marks: totalMarks,
-          scored_marks: scoredMarks,
-          percentage: percentage,
-          grade: grade,
-          time_taken: time_taken,
-          time_limit: expectedTime,
-          time_performance: timePerformance,
-          performance_summary: {
-            attempted: attempted,
-            correct: correct,
-            incorrect: incorrect,
-            not_attempted: notAttempted
-          },
-          overall_feedback: feedback,
-          question_results: gradingResults,
-          completed_at: new Date().toISOString()
-        },
-        metadata: {
-          quiz_id: quiz_id,
-          class_no: class_no,
-          board: board,
-          subject: subject,
-          auto_graded: true,
-          grading_method: 'automatic_mcq',
-          checked_at: new Date().toISOString()
-        }
+      marks_obtained: scoredMarks,
+      ai_feedback: generateQuizFeedback(gradingResults, percentage),
+      completion_percent: percentage,
+      detailed_results: {
+        total_questions: quiz_questions.length,
+        correct_answers: gradingResults.filter(r => r.is_correct).length,
+        grade: grade,
+        question_results: gradingResults
       }
     });
 
-  } catch (err) {
-    console.error("Quiz checking error:", err);
+  } catch (error) {
+    console.error("Quiz checking error:", error);
     res.status(500).json({
       success: false,
-      error: { code: "QUIZ_CHECKING_ERROR", message: err.message }
+      error: { 
+        code: "QUIZ_CHECKING_ERROR", 
+        message: error.message || "Failed to check quiz"
+      }
     });
   }
 });
+
+// Helper function for string similarity
+function calculateSimilarity(str1, str2) {
+  if (str1 === str2) return 1.0;
+  
+  const words1 = str1.split(/\s+/);
+  const words2 = str2.split(/\s+/);
+  
+  let matches = 0;
+  const totalWords = Math.max(words1.length, words2.length);
+  
+  for (const word of words1) {
+    if (words2.includes(word)) {
+      matches++;
+    }
+  }
+  
+  return matches / totalWords;
+}
+
+// Helper function for letter grades
+function getLetterGrade(percentage) {
+  if (percentage >= 90) return 'A+';
+  if (percentage >= 85) return 'A';
+  if (percentage >= 80) return 'B+';
+  if (percentage >= 75) return 'B';
+  if (percentage >= 70) return 'C+';
+  if (percentage >= 65) return 'C';
+  if (percentage >= 60) return 'D';
+  return 'F';
+}
+
+// Helper function for quiz feedback
+function generateQuizFeedback(gradingResults, percentage) {
+  const correctCount = gradingResults.filter(r => r.is_correct).length;
+  const totalCount = gradingResults.length;
+  
+  let feedback = `You scored ${correctCount} out of ${totalCount} questions correctly (${percentage}%). `;
+  
+  if (percentage >= 90) {
+    feedback += "Excellent work! You have a strong understanding of the material.";
+  } else if (percentage >= 80) {
+    feedback += "Good job! You have a solid grasp of the concepts.";
+  } else if (percentage >= 70) {
+    feedback += "Not bad! Review the incorrect answers to improve your understanding.";
+  } else if (percentage >= 60) {
+    feedback += "You're on the right track, but there's room for improvement. Study the material more thoroughly.";
+  } else {
+    feedback += "You need to study the material more carefully. Focus on the areas where you made mistakes.";
+  }
+  
+  return feedback;
+}
 
 /**
  * POST /api/v1/lecture/generate
