@@ -2990,6 +2990,437 @@ app.post("/api/v1/quiz/check", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/v1/remedial/learn
+ * Remedial Learning API - Analyze failed quiz, generate focused lecture, and create new quiz
+ * This creates a learning loop for students who fail quizzes
+ */
+app.post("/api/v1/remedial/learn", async (req, res) => {
+  try {
+    const {
+      // Quiz data
+      quiz_questions, // Original quiz questions array
+      student_answers, // Student's answers array [{question_id, answer}]
+      quiz_title,
+      
+      // Metadata
+      book_id,
+      class_no,
+      board,
+      subject,
+      
+      // Optional settings
+      passing_percentage = 60,
+      chunk_limit = 5,
+      chunk_offset = 0,
+      new_quiz_question_count = 5,
+      model = "gpt-4o-mini",
+      max_tokens = 4000
+    } = req.body;
+
+    // Validation
+    if (!quiz_questions || !Array.isArray(quiz_questions) || quiz_questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_QUIZ_QUESTIONS", message: "quiz_questions array is required and must not be empty" }
+      });
+    }
+
+    if (!student_answers || !Array.isArray(student_answers)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_STUDENT_ANSWERS", message: "student_answers array is required" }
+      });
+    }
+
+    if (!class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "class_no, board, and subject are required" }
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "OPENAI_NOT_CONFIGURED", message: "OpenAI API key not configured" }
+      });
+    }
+
+    console.log(`\n📚 Remedial Learning Request:`);
+    console.log(`   Quiz: ${quiz_title || 'Untitled Quiz'}`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Questions: ${quiz_questions.length} | Answers: ${student_answers.length}`);
+
+    // Step 1: Analyze the quiz results
+    const answerMap = new Map();
+    student_answers.forEach(ans => {
+      answerMap.set(parseInt(ans.question_id), ans.answer);
+    });
+
+    const analysisResults = {
+      total_questions: quiz_questions.length,
+      correct: 0,
+      incorrect: 0,
+      unanswered: 0,
+      weak_areas: [],
+      incorrect_questions: [],
+      correct_questions: []
+    };
+
+    // Grade each question and identify weak areas
+    for (const question of quiz_questions) {
+      const studentAnswer = answerMap.get(question.question_id);
+      const correctAnswer = question.correct_answer;
+      
+      if (!studentAnswer) {
+        analysisResults.unanswered++;
+        analysisResults.incorrect_questions.push({
+          ...question,
+          student_answer: "No answer provided",
+          is_correct: false
+        });
+        analysisResults.weak_areas.push(question.question);
+      } else if (question.type === 'mcq' || question.type === 'true_false') {
+        const isCorrect = studentAnswer.toString().toUpperCase() === correctAnswer.toString().toUpperCase();
+        if (isCorrect) {
+          analysisResults.correct++;
+          analysisResults.correct_questions.push({ ...question, student_answer: studentAnswer, is_correct: true });
+        } else {
+          analysisResults.incorrect++;
+          analysisResults.incorrect_questions.push({ ...question, student_answer: studentAnswer, is_correct: false });
+          analysisResults.weak_areas.push(question.question);
+        }
+      } else if (question.type === 'short_answer') {
+        const similarity = calculateSimilarity(
+          (studentAnswer || '').toString().toLowerCase(),
+          (correctAnswer || '').toString().toLowerCase()
+        );
+        const isCorrect = similarity > 0.6;
+        if (isCorrect) {
+          analysisResults.correct++;
+          analysisResults.correct_questions.push({ ...question, student_answer: studentAnswer, is_correct: true });
+        } else {
+          analysisResults.incorrect++;
+          analysisResults.incorrect_questions.push({ ...question, student_answer: studentAnswer, is_correct: false });
+          analysisResults.weak_areas.push(question.question);
+        }
+      }
+    }
+
+    const percentage = Math.round((analysisResults.correct / analysisResults.total_questions) * 100);
+    const passed = percentage >= passing_percentage;
+    const grade = getLetterGrade(percentage);
+
+    console.log(`   Score: ${analysisResults.correct}/${analysisResults.total_questions} (${percentage}%)`);
+    console.log(`   Status: ${passed ? '✅ PASSED' : '❌ FAILED - Generating remedial content...'}`);
+
+    // If passed, return success without remedial content
+    if (passed) {
+      return res.json({
+        success: true,
+        data: {
+          status: "passed",
+          message: "Congratulations! You passed the quiz. No remedial learning required.",
+          quiz_result: {
+            score: analysisResults.correct,
+            total: analysisResults.total_questions,
+            percentage: percentage,
+            grade: grade,
+            passing_percentage: passing_percentage
+          },
+          detailed_results: analysisResults.correct_questions.concat(analysisResults.incorrect_questions).map(q => ({
+            question_id: q.question_id,
+            question: q.question,
+            correct_answer: q.correct_answer,
+            student_answer: q.student_answer,
+            is_correct: q.is_correct,
+            explanation: q.explanation
+          }))
+        }
+      });
+    }
+
+    // Step 2: Get book content for remedial lecture (if book_id provided)
+    let contentText = "";
+    let bookInfo = null;
+    
+    if (book_id) {
+      bookInfo = await getBookInfo(book_id);
+      if (bookInfo) {
+        const allChunks = await getBookChunks(book_id);
+        const selectedChunks = allChunks.slice(chunk_offset, chunk_offset + chunk_limit);
+        contentText = selectedChunks.map((chunk, index) => 
+          `Section ${index + 1}:\n${chunk.text}`
+        ).join('\n\n');
+        console.log(`   Using ${selectedChunks.length} chunks from book for context`);
+      }
+    }
+
+    // Step 3: Generate remedial lecture focused on weak areas
+    const weakAreasText = analysisResults.incorrect_questions.map((q, i) => 
+      `${i + 1}. Question: "${q.question}"
+   Correct Answer: ${q.correct_answer}
+   Student's Answer: ${q.student_answer}
+   Explanation: ${q.explanation || 'Not provided'}`
+    ).join('\n\n');
+
+    const lecturePrompt = `You are an expert educator creating a REMEDIAL LECTURE for a student who failed a quiz.
+
+STUDENT'S WEAK AREAS (Questions they got wrong):
+${weakAreasText}
+
+${contentText ? `REFERENCE MATERIAL FROM TEXTBOOK:
+${contentText}` : ''}
+
+STUDENT DETAILS:
+- Class: ${class_no}
+- Board: ${board}
+- Subject: ${subject}
+- Quiz Score: ${percentage}% (Failed - needs ${passing_percentage}% to pass)
+
+YOUR TASK:
+Create a focused remedial lecture that:
+1. Addresses EACH concept the student got wrong
+2. Explains the correct answers in simple terms
+3. Provides clear examples and analogies
+4. Builds understanding step-by-step
+5. Is age-appropriate for Class ${class_no}
+
+LECTURE REQUIREMENTS:
+1. Start with encouragement - failing is part of learning
+2. Break down each weak concept clearly
+3. Use real-world examples
+4. Include memory tips or mnemonics where helpful
+5. Summarize key points at the end
+6. Keep language simple and engaging
+
+OUTPUT FORMAT:
+Return ONLY valid HTML (no markdown). Use these tags:
+- <h2> for main topic headings
+- <h3> for subtopic headings
+- <p> for paragraphs
+- <ul>/<li> for bullet points
+- <strong> for emphasis
+- <div class="tip"> for helpful tips
+- <div class="example"> for examples
+- <div class="key-point"> for important concepts
+
+Generate a comprehensive but focused lecture that will help this student understand their mistakes and learn the correct concepts.`;
+
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const startTime = Date.now();
+    
+    // Generate remedial lecture
+    console.log(`   Generating remedial lecture...`);
+    const lectureCompletion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: `You are a patient, encouraging teacher who specializes in helping students learn from their mistakes. Create remedial lectures in HTML format that build confidence while teaching correct concepts.`
+        },
+        {
+          role: "user",
+          content: lecturePrompt
+        }
+      ],
+      max_tokens: Math.floor(max_tokens * 0.6), // 60% of tokens for lecture
+      temperature: 0.4,
+    });
+
+    const lectureContent = lectureCompletion.choices[0].message.content;
+    const lectureTokens = lectureCompletion.usage;
+    console.log(`   ✓ Lecture generated (${lectureTokens.total_tokens} tokens)`);
+
+    // Step 4: Generate a new quiz focused on the weak areas
+    console.log(`   Generating follow-up quiz...`);
+    const quizPrompt = `Create a NEW quiz to test the student on the concepts they previously got wrong.
+
+CONCEPTS TO TEST (from their failed answers):
+${weakAreasText}
+
+${contentText ? `REFERENCE MATERIAL:
+${contentText}` : ''}
+
+REQUIREMENTS:
+- Subject: ${subject} (Class ${class_no}, ${board} Board)
+- Questions: ${new_quiz_question_count}
+- Focus: Test the SAME concepts but with DIFFERENT questions
+- Make questions slightly easier to build confidence
+- Include helpful hints in explanations
+- Mix question types for variety
+
+RULES:
+1. Questions must test the concepts the student struggled with
+2. Make questions clear and unambiguous
+3. Include detailed explanations for learning
+4. Return ONLY valid JSON (no markdown)
+
+RETURN ONLY THIS JSON:
+{
+  "quiz": {
+    "title": "Remedial Quiz - ${subject}",
+    "instructions": "This quiz will help you practice the concepts you found challenging. Take your time and read each question carefully.",
+    "time_limit": ${Math.max(15, new_quiz_question_count * 2)},
+    "total_marks": ${new_quiz_question_count},
+    "is_remedial": true,
+    "questions": [
+      {
+        "question_id": 1,
+        "type": "mcq",
+        "question": "Question testing a weak concept",
+        "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
+        "correct_answer": "A",
+        "explanation": "Detailed explanation with learning tip",
+        "related_concept": "Which weak area this tests",
+        "marks": 1
+      }
+    ]
+  }
+}`;
+
+    const quizCompletion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: `You are a quiz creator specializing in remedial education. Create quizzes that test understanding while building student confidence. Return JSON format only.`
+        },
+        {
+          role: "user",
+          content: quizPrompt
+        }
+      ],
+      max_tokens: Math.floor(max_tokens * 0.4), // 40% of tokens for quiz
+      temperature: 0.3,
+    });
+
+    const quizContent = quizCompletion.choices[0].message.content;
+    const quizTokens = quizCompletion.usage;
+    
+    let newQuiz;
+    try {
+      const cleanedQuiz = cleanJsonFromMarkdown(quizContent);
+      newQuiz = JSON.parse(cleanedQuiz);
+      console.log(`   ✓ New quiz generated (${newQuiz.quiz.questions.length} questions)`);
+    } catch (parseError) {
+      console.error("Failed to parse new quiz JSON:", parseError);
+      newQuiz = {
+        quiz: {
+          title: `Remedial Quiz - ${subject}`,
+          instructions: "Practice quiz generated for remedial learning.",
+          time_limit: 15,
+          total_marks: new_quiz_question_count,
+          is_remedial: true,
+          questions: [],
+          error: "Quiz generation had formatting issues. Please try again."
+        }
+      };
+    }
+
+    const totalTime = Date.now() - startTime;
+    const totalTokens = lectureTokens.total_tokens + quizTokens.total_tokens;
+
+    console.log(`   ✓ Remedial content ready (${totalTime}ms, ${totalTokens} total tokens)`);
+
+    // Step 5: Return comprehensive response
+    res.json({
+      success: true,
+      data: {
+        status: "failed",
+        message: "Don't worry! We've created a personalized learning plan to help you improve.",
+        
+        // Original quiz results
+        quiz_result: {
+          original_quiz_title: quiz_title || "Quiz",
+          score: analysisResults.correct,
+          total: analysisResults.total_questions,
+          percentage: percentage,
+          grade: grade,
+          passing_percentage: passing_percentage,
+          correct_count: analysisResults.correct,
+          incorrect_count: analysisResults.incorrect,
+          unanswered_count: analysisResults.unanswered
+        },
+        
+        // Analysis of mistakes
+        analysis: {
+          weak_areas_count: analysisResults.weak_areas.length,
+          weak_concepts: analysisResults.weak_areas,
+          detailed_mistakes: analysisResults.incorrect_questions.map(q => ({
+            question_id: q.question_id,
+            question: q.question,
+            type: q.type,
+            correct_answer: q.correct_answer,
+            student_answer: q.student_answer,
+            explanation: q.explanation
+          }))
+        },
+        
+        // Remedial lecture
+        remedial_lecture: {
+          content: lectureContent,
+          focus_areas: analysisResults.weak_areas.slice(0, 5), // Top 5 weak areas
+          estimated_reading_time_minutes: Math.ceil(lectureContent.length / 1500)
+        },
+        
+        // New quiz for re-testing
+        follow_up_quiz: newQuiz.quiz,
+        
+        // Metadata
+        metadata: {
+          remedial_id: generateUUID(),
+          book_id: book_id || null,
+          book_title: bookInfo?.file_name || null,
+          class_no: class_no,
+          board: board,
+          subject: subject,
+          chunks_used: book_id ? chunk_limit : 0,
+          model_used: model,
+          tokens_used: {
+            lecture: lectureTokens,
+            quiz: quizTokens,
+            total: totalTokens
+          },
+          processing_time_ms: totalTime,
+          created_at: new Date().toISOString(),
+          learning_path: {
+            step_1: "Review the remedial lecture focusing on your weak areas",
+            step_2: "Take notes on key concepts and examples",
+            step_3: "Attempt the follow-up quiz when ready",
+            step_4: "If needed, repeat the process until you pass"
+          }
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Remedial learning error:", err);
+    
+    if (err.status === 401) {
+      return res.status(401).json({
+        success: false,
+        error: { code: "INVALID_API_KEY", message: "Invalid OpenAI API key" }
+      });
+    } else if (err.status === 429) {
+      return res.status(429).json({
+        success: false,
+        error: { code: "RATE_LIMITED", message: "OpenAI API rate limit exceeded" }
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: { code: "REMEDIAL_LEARNING_ERROR", message: err.message }
+    });
+  }
+});
+
 // Helper function for string similarity
 function calculateSimilarity(str1, str2) {
   if (str1 === str2) return 1.0;

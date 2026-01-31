@@ -746,6 +746,147 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         <button onclick="checkQuiz()">🎯 Grade Quiz</button>
         <div class="output" id="checkQuizOutput"></div>
       </div>
+
+      <!-- Remedial Learning -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 📚 Remedial Learning (Failed Quiz Recovery)</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/remedial/learn</p>
+        <p style="color:#ffc107;font-size:0.9em;margin-bottom:15px;background:rgba(255,193,7,0.1);padding:10px;border-radius:6px;">
+          <strong>🎯 Purpose:</strong> When a student fails a quiz, this API analyzes their mistakes, generates a focused lecture on weak areas, and creates a new quiz for re-testing.
+        </p>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Quiz Title</label>
+            <input type="text" id="remedialQuizTitle" placeholder="e.g., Physics Unit Test" value="Physics Unit Test">
+          </div>
+          <div class="form-group">
+            <label>Passing Percentage (%)</label>
+            <input type="number" id="remedialPassingPercent" value="60" min="1" max="100">
+          </div>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Class <span style="color: red;">*</span></label>
+            <input type="text" id="remedialClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div class="form-group">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="remedialBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div class="form-group">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="remedialSubject" placeholder="e.g., Physics" value="Physics">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Book ID (Optional) <span class="tooltip" title="If provided, the remedial lecture will include context from the book">ℹ️</span></label>
+          <input type="text" id="remedialBookId" placeholder="Leave empty to generate lecture without book context, or enter Book ID">
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Chunk Limit <span class="tooltip" title="Number of book sections to use for context (if book_id provided)">ℹ️</span></label>
+            <input type="number" id="remedialChunkLimit" value="5" min="1" max="20">
+          </div>
+          <div class="form-group">
+            <label>Chunk Offset</label>
+            <input type="number" id="remedialChunkOffset" value="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>New Quiz Questions</label>
+            <input type="number" id="remedialNewQuizCount" value="5" min="3" max="15">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Original Quiz Questions (JSON Array) <span style="color: red;">*</span></label>
+          <textarea id="remedialQuizQuestions" rows="10" placeholder='Paste the quiz questions array here...'>[
+  {
+    "question_id": 1,
+    "type": "mcq",
+    "question": "What is Newton's First Law of Motion also known as?",
+    "options": ["A) Law of Acceleration", "B) Law of Inertia", "C) Law of Action-Reaction", "D) Law of Gravity"],
+    "correct_answer": "B",
+    "explanation": "Newton's First Law is also called the Law of Inertia because it states that objects tend to resist changes in their state of motion.",
+    "marks": 1
+  },
+  {
+    "question_id": 2,
+    "type": "mcq",
+    "question": "The SI unit of force is:",
+    "options": ["A) Joule", "B) Watt", "C) Newton", "D) Pascal"],
+    "correct_answer": "C",
+    "explanation": "Force is measured in Newtons (N) in the SI system. 1 Newton = 1 kg × m/s²",
+    "marks": 1
+  },
+  {
+    "question_id": 3,
+    "type": "mcq",
+    "question": "According to F = ma, if mass doubles and acceleration stays same, force will:",
+    "options": ["A) Stay same", "B) Double", "C) Halve", "D) Quadruple"],
+    "correct_answer": "B",
+    "explanation": "Force is directly proportional to mass. If mass doubles with same acceleration, force doubles.",
+    "marks": 1
+  },
+  {
+    "question_id": 4,
+    "type": "true_false",
+    "question": "Friction always opposes motion.",
+    "options": ["True", "False"],
+    "correct_answer": "True",
+    "explanation": "Friction is a force that opposes the relative motion between two surfaces in contact.",
+    "marks": 1
+  },
+  {
+    "question_id": 5,
+    "type": "mcq",
+    "question": "Which type of friction is generally the strongest?",
+    "options": ["A) Rolling friction", "B) Sliding friction", "C) Static friction", "D) Fluid friction"],
+    "correct_answer": "C",
+    "explanation": "Static friction is the strongest as it prevents stationary objects from moving. Once motion begins, kinetic friction takes over which is less than static friction.",
+    "marks": 1
+  }
+]</textarea>
+        </div>
+        
+        <div class="form-group">
+          <label>Student's Answers (JSON Array) <span style="color: red;">*</span></label>
+          <textarea id="remedialStudentAnswers" rows="6" placeholder='Enter student answers...'>[
+  {"question_id": 1, "answer": "A"},
+  {"question_id": 2, "answer": "A"},
+  {"question_id": 3, "answer": "B"},
+  {"question_id": 4, "answer": "False"},
+  {"question_id": 5, "answer": "A"}
+]</textarea>
+          <small style="color:#888;">This example shows a student who got only 1 out of 5 correct (question 3) - 20% score, failing the quiz</small>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>AI Model</label>
+            <select id="remedialModel">
+              <option value="gpt-4o-mini">GPT-4o Mini (Fast)</option>
+              <option value="gpt-4o">GPT-4o (Best Quality)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Max Tokens</label>
+            <input type="number" id="remedialMaxTokens" value="4000" min="2000" max="8000">
+          </div>
+        </div>
+        
+        <button onclick="remedialLearn()" style="background: linear-gradient(135deg, #9c27b0, #673ab7);">📚 Analyze & Generate Remedial Content</button>
+        <div class="output" id="remedialOutput" style="max-height: 600px;"></div>
+        
+        <!-- Rendered Lecture Preview -->
+        <div id="remedialLecturePreview" style="display:none; margin-top:20px; background:#fff; color:#333; padding:20px; border-radius:10px; max-height:500px; overflow:auto;">
+          <h3 style="color:#9c27b0; margin-bottom:15px;">📖 Remedial Lecture Preview</h3>
+          <div id="remedialLectureContent"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1360,6 +1501,90 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
         }
       ], null, 2);
     };
+
+    // Remedial Learning Function
+    async function remedialLearn() {
+      const quizTitle = document.getElementById('remedialQuizTitle').value.trim();
+      const passingPercent = parseInt(document.getElementById('remedialPassingPercent').value) || 60;
+      const classNo = document.getElementById('remedialClass').value.trim();
+      const board = document.getElementById('remedialBoard').value.trim();
+      const subject = document.getElementById('remedialSubject').value.trim();
+      const bookId = document.getElementById('remedialBookId').value.trim();
+      const chunkLimit = parseInt(document.getElementById('remedialChunkLimit').value) || 5;
+      const chunkOffset = parseInt(document.getElementById('remedialChunkOffset').value) || 0;
+      const newQuizCount = parseInt(document.getElementById('remedialNewQuizCount').value) || 5;
+      const model = document.getElementById('remedialModel').value;
+      const maxTokens = parseInt(document.getElementById('remedialMaxTokens').value) || 4000;
+      
+      const quizQuestionsText = document.getElementById('remedialQuizQuestions').value.trim();
+      const studentAnswersText = document.getElementById('remedialStudentAnswers').value.trim();
+
+      // Validation
+      if (!classNo || !board || !subject) {
+        showOutput('remedialOutput', { error: 'Class, Board, and Subject are required' }, true);
+        return;
+      }
+
+      if (!quizQuestionsText || !studentAnswersText) {
+        showOutput('remedialOutput', { error: 'Quiz questions and student answers are required' }, true);
+        return;
+      }
+
+      let quizQuestions, studentAnswers;
+      try {
+        quizQuestions = JSON.parse(quizQuestionsText);
+        studentAnswers = JSON.parse(studentAnswersText);
+      } catch (e) {
+        showOutput('remedialOutput', { error: 'Invalid JSON in quiz questions or student answers: ' + e.message }, true);
+        return;
+      }
+
+      if (!Array.isArray(quizQuestions) || !Array.isArray(studentAnswers)) {
+        showOutput('remedialOutput', { error: 'Quiz questions and student answers must be arrays' }, true);
+        return;
+      }
+
+      showLoading('remedialOutput');
+      document.getElementById('remedialLecturePreview').style.display = 'none';
+      
+      try {
+        const payload = {
+          quiz_questions: quizQuestions,
+          student_answers: studentAnswers,
+          quiz_title: quizTitle,
+          class_no: classNo,
+          board: board,
+          subject: subject,
+          passing_percentage: passingPercent,
+          chunk_limit: chunkLimit,
+          chunk_offset: chunkOffset,
+          new_quiz_question_count: newQuizCount,
+          model: model,
+          max_tokens: maxTokens
+        };
+
+        if (bookId) {
+          payload.book_id = bookId;
+        }
+
+        const res = await fetch(`${API_BASE}/remedial/learn`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        showOutput('remedialOutput', data, !data.success);
+
+        // If successful and has lecture content, show preview
+        if (data.success && data.data && data.data.remedial_lecture && data.data.remedial_lecture.content) {
+          document.getElementById('remedialLectureContent').innerHTML = data.data.remedial_lecture.content;
+          document.getElementById('remedialLecturePreview').style.display = 'block';
+        }
+      } catch (e) {
+        showOutput('remedialOutput', { error: e.message }, true);
+      }
+    }
   </script>
 
   <style>
@@ -1372,6 +1597,52 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
     
     .required {
       color: #ff6b6b;
+    }
+
+    /* Remedial Lecture Preview Styles */
+    #remedialLectureContent h2 {
+      color: #9c27b0;
+      border-bottom: 2px solid #9c27b0;
+      padding-bottom: 8px;
+      margin: 20px 0 15px 0;
+    }
+    #remedialLectureContent h3 {
+      color: #673ab7;
+      margin: 15px 0 10px 0;
+    }
+    #remedialLectureContent p {
+      margin: 10px 0;
+      line-height: 1.7;
+    }
+    #remedialLectureContent ul, #remedialLectureContent ol {
+      margin: 10px 0 10px 20px;
+    }
+    #remedialLectureContent li {
+      margin: 5px 0;
+    }
+    #remedialLectureContent .tip {
+      background: #e8f5e9;
+      border-left: 4px solid #4caf50;
+      padding: 12px 15px;
+      margin: 15px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    #remedialLectureContent .example {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 12px 15px;
+      margin: 15px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    #remedialLectureContent .key-point {
+      background: #fff3e0;
+      border-left: 4px solid #ff9800;
+      padding: 12px 15px;
+      margin: 15px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    #remedialLectureContent strong {
+      color: #9c27b0;
     }
   </style>
 </body>

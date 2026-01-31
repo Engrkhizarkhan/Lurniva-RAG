@@ -21,7 +21,8 @@ Lurniva RAG is a **production-ready microservice** for PDF document processing, 
 - **🧪 Quiz Generation**: Multi-type quiz creation (MCQ, T/F, Short Answer)
 - **✅ Assignment Checking**: AI-powered grading with file upload
 - **🎯 Quiz Checking**: Automated grading for multiple question types
-- **🔐 Session Auth**: Built-in authentication for admin console
+- **� Remedial Learning**: Adaptive learning loop for failed quiz recovery
+- **�🔐 Session Auth**: Built-in authentication for admin console
 
 ---
 
@@ -2948,6 +2949,278 @@ POST /api/v1/quiz/check
 }
 ```
 
+---
+
+### 5. Remedial Learning API (Failed Quiz Recovery)
+
+**NEW!** Comprehensive remedial learning system for students who fail quizzes. This API creates a personalized learning loop: analyze mistakes → generate focused lecture → create new quiz.
+
+#### Endpoint
+```bash
+POST /api/v1/remedial/learn
+```
+
+#### Use Case
+When a student fails a quiz (below passing percentage), this API:
+1. **Analyzes** which questions the student got wrong
+2. **Identifies** weak concepts and knowledge gaps
+3. **Generates** a focused remedial lecture targeting those weak areas
+4. **Creates** a new quiz to re-test the student on those specific concepts
+
+This creates an adaptive learning loop that continues until the student masters the material.
+
+#### Request Body
+```json
+{
+  "quiz_questions": [
+    {
+      "question_id": 1,
+      "type": "mcq",
+      "question": "What is Newton's First Law of Motion also known as?",
+      "options": ["A) Law of Acceleration", "B) Law of Inertia", "C) Law of Action-Reaction", "D) Law of Gravity"],
+      "correct_answer": "B",
+      "explanation": "Newton's First Law is also called the Law of Inertia.",
+      "marks": 1
+    },
+    {
+      "question_id": 2,
+      "type": "mcq",
+      "question": "The SI unit of force is:",
+      "options": ["A) Joule", "B) Watt", "C) Newton", "D) Pascal"],
+      "correct_answer": "C",
+      "explanation": "Force is measured in Newtons (N).",
+      "marks": 1
+    }
+  ],
+  "student_answers": [
+    {"question_id": 1, "answer": "A"},
+    {"question_id": 2, "answer": "A"}
+  ],
+  "quiz_title": "Physics Unit Test",
+  "class_no": "10",
+  "board": "CBSE",
+  "subject": "Physics",
+  "passing_percentage": 60,
+  "book_id": "optional-book-uuid-for-context",
+  "chunk_limit": 5,
+  "chunk_offset": 0,
+  "new_quiz_question_count": 5,
+  "model": "gpt-4o-mini",
+  "max_tokens": 4000
+}
+```
+
+#### Parameters
+
+| Parameter | Required | Type | Default | Description |
+|-----------|----------|------|---------|-------------|
+| quiz_questions | ✅ | array | - | Original quiz questions with correct answers |
+| student_answers | ✅ | array | - | Student's submitted answers |
+| class_no | ✅ | string | - | Student's class level |
+| board | ✅ | string | - | Education board (CBSE, ICSE, etc.) |
+| subject | ✅ | string | - | Subject name |
+| quiz_title | ❌ | string | "Quiz" | Title of the original quiz |
+| passing_percentage | ❌ | number | 60 | Minimum percentage to pass |
+| book_id | ❌ | string | null | Book ID for additional context |
+| chunk_limit | ❌ | number | 5 | Number of book chunks for context |
+| chunk_offset | ❌ | number | 0 | Starting offset for book chunks |
+| new_quiz_question_count | ❌ | number | 5 | Questions in the follow-up quiz |
+| model | ❌ | string | "gpt-4o-mini" | OpenAI model to use |
+| max_tokens | ❌ | number | 4000 | Maximum response tokens |
+
+#### Response (Failed Quiz - Remedial Content Generated)
+```json
+{
+  "success": true,
+  "data": {
+    "status": "failed",
+    "message": "Don't worry! We've created a personalized learning plan to help you improve.",
+    
+    "quiz_result": {
+      "original_quiz_title": "Physics Unit Test",
+      "score": 1,
+      "total": 5,
+      "percentage": 20,
+      "grade": "F",
+      "passing_percentage": 60,
+      "correct_count": 1,
+      "incorrect_count": 4,
+      "unanswered_count": 0
+    },
+    
+    "analysis": {
+      "weak_areas_count": 4,
+      "weak_concepts": [
+        "What is Newton's First Law of Motion also known as?",
+        "The SI unit of force is:",
+        "Friction always opposes motion.",
+        "Which type of friction is generally the strongest?"
+      ],
+      "detailed_mistakes": [
+        {
+          "question_id": 1,
+          "question": "What is Newton's First Law of Motion also known as?",
+          "type": "mcq",
+          "correct_answer": "B",
+          "student_answer": "A",
+          "explanation": "Newton's First Law is also called the Law of Inertia."
+        }
+      ]
+    },
+    
+    "remedial_lecture": {
+      "content": "<h2>Let's Master These Concepts! 🎯</h2><p>Don't worry about the quiz results...</p>...",
+      "focus_areas": ["Newton's Laws", "Units of Force", "Friction Types"],
+      "estimated_reading_time_minutes": 8
+    },
+    
+    "follow_up_quiz": {
+      "title": "Remedial Quiz - Physics",
+      "instructions": "This quiz will help you practice the concepts you found challenging.",
+      "time_limit": 15,
+      "total_marks": 5,
+      "is_remedial": true,
+      "questions": [
+        {
+          "question_id": 1,
+          "type": "mcq",
+          "question": "Which law states that objects resist changes in their motion?",
+          "options": ["A) Law of Inertia", "B) Law of Gravity", "C) Law of Friction", "D) Law of Energy"],
+          "correct_answer": "A",
+          "explanation": "The Law of Inertia (Newton's First Law) describes how objects resist changes in motion.",
+          "related_concept": "Newton's First Law",
+          "marks": 1
+        }
+      ]
+    },
+    
+    "metadata": {
+      "remedial_id": "uuid-here",
+      "book_id": "book-uuid-if-provided",
+      "class_no": "10",
+      "board": "CBSE",
+      "subject": "Physics",
+      "processing_time_ms": 5432,
+      "learning_path": {
+        "step_1": "Review the remedial lecture focusing on your weak areas",
+        "step_2": "Take notes on key concepts and examples",
+        "step_3": "Attempt the follow-up quiz when ready",
+        "step_4": "If needed, repeat the process until you pass"
+      }
+    }
+  }
+}
+```
+
+#### Response (Passed Quiz - No Remedial Needed)
+```json
+{
+  "success": true,
+  "data": {
+    "status": "passed",
+    "message": "Congratulations! You passed the quiz. No remedial learning required.",
+    "quiz_result": {
+      "score": 4,
+      "total": 5,
+      "percentage": 80,
+      "grade": "B+",
+      "passing_percentage": 60
+    },
+    "detailed_results": [...]
+  }
+}
+```
+
+#### Learning Loop Flow
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ADAPTIVE LEARNING LOOP                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. Student takes quiz ──────────────────────────────────►  │
+│                                                              │
+│  2. Quiz checked ◄─────────────────────────────────────────  │
+│        │                                                     │
+│        ▼                                                     │
+│  3. Passed? ────────── YES ──────► Done! Congratulations!   │
+│        │                                                     │
+│        NO                                                    │
+│        │                                                     │
+│        ▼                                                     │
+│  4. Call /api/v1/remedial/learn ───────────────────────────► │
+│        │                                                     │
+│        ▼                                                     │
+│  5. AI analyzes mistakes ◄──────────────────────────────── │
+│        │                                                     │
+│        ▼                                                     │
+│  6. Generates focused lecture on weak areas                 │
+│        │                                                     │
+│        ▼                                                     │
+│  7. Creates new quiz on same concepts                       │
+│        │                                                     │
+│        ▼                                                     │
+│  8. Student studies lecture                                 │
+│        │                                                     │
+│        ▼                                                     │
+│  9. Student takes follow-up quiz ────► (Back to step 2)    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Integration Example
+```javascript
+// Example: Implementing the remedial learning loop
+async function handleQuizSubmission(quizData, studentAnswers) {
+  // Step 1: Check the quiz
+  const checkResult = await fetch('/api/v1/quiz/check', {
+    method: 'POST',
+    body: JSON.stringify({
+      quiz_questions: quizData.questions,
+      student_answers: studentAnswers,
+      quiz_title: quizData.title,
+      total_marks: quizData.total_marks
+    })
+  });
+  
+  const result = await checkResult.json();
+  
+  // Step 2: If failed, trigger remedial learning
+  if (result.completion_percent < 60) {
+    const remedialResult = await fetch('/api/v1/remedial/learn', {
+      method: 'POST',
+      body: JSON.stringify({
+        quiz_questions: quizData.questions,
+        student_answers: studentAnswers,
+        quiz_title: quizData.title,
+        class_no: "10",
+        board: "CBSE",
+        subject: "Physics",
+        passing_percentage: 60,
+        book_id: quizData.book_id // Optional
+      })
+    });
+    
+    const remedial = await remedialResult.json();
+    
+    // Step 3: Show lecture to student
+    displayRemedialLecture(remedial.data.remedial_lecture);
+    
+    // Step 4: Store follow-up quiz for later
+    storeFollowUpQuiz(remedial.data.follow_up_quiz);
+    
+    return {
+      needsRemedial: true,
+      lecture: remedial.data.remedial_lecture,
+      nextQuiz: remedial.data.follow_up_quiz
+    };
+  }
+  
+  return { needsRemedial: false, passed: true };
+}
+```
+
+---
+
 ### Question Type Support
 
 | Type | Description | Answer Format | Grading Method |
@@ -2978,6 +3251,9 @@ All educational APIs return standardized error responses:
 - `FILE_UPLOAD_ERROR`: Issues with file processing
 - `AI_GENERATION_ERROR`: AI model response issues
 - `JSON_PARSE_ERROR`: Response parsing failures
+- `INVALID_QUIZ_QUESTIONS`: Quiz questions array is missing or empty
+- `INVALID_STUDENT_ANSWERS`: Student answers array is malformed
+- `REMEDIAL_LEARNING_ERROR`: Error during remedial content generation
 
 ---
 
