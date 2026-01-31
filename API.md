@@ -2854,7 +2854,7 @@ assignment_title: "Electric Current Research Assignment"
 total_marks: "20"
 assignment_instructions: "Submit a well-researched document..."
 assignment_questions: "1. Explain Ohm's law (5 marks)..."
-student_submission: [FILE] (PDF/Word/Text document)
+student_submission_file: [FILE] (PDF/Word/Text document)
 ```
 
 #### Parameters
@@ -2862,7 +2862,7 @@ student_submission: [FILE] (PDF/Word/Text document)
 - **total_marks** (required): Total marks for grading
 - **assignment_instructions** (required): Assignment instructions
 - **assignment_questions** (required): List of assignment questions
-- **student_submission** (required): File upload (PDF, DOC, DOCX, TXT)
+- **student_submission_file** (required): File upload (PDF, DOC, DOCX, TXT)
 
 #### Response
 ```json
