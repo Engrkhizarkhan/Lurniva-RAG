@@ -1,12 +1,14 @@
-import OpenAI from "openai";
+// Testing code to interact with OpenAI API
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // secure your key!
-});
+// import OpenAI from "openai";
 
-const response = await openai.responses.create({
-  model: "gpt-4o-mini",
-  input: "tell me a joke about programmers",
-});
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY, // secure your key!
+// });
 
-console.log(response.output_text);
+// const response = await openai.responses.create({
+//   model: "gpt-4o-mini",
+//   input: "tell me a joke about programmers",
+// });
+
+// console.log(response.output_text);

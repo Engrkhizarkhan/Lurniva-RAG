@@ -4,6 +4,12 @@
 **Base URL:** `http://localhost:3000/api/v1`  
 **Live Features:** 🎨 **AI Visual Generation** | 📚 **Smart Lectures** | 🤖 **Context-Aware Tutoring** | 📝 **Educational Assessment**
 
+> **⚠️ IMPORTANT NOTE:** This documentation has been updated to match the actual server implementation. Key changes:
+> - `/tutor/ask` requires pre-processed chunks and educational metadata
+> - `/tutor/search-and-ask` is the recommended endpoint for automatic search + AI response  
+> - `/lecture/generate` uses pagination parameters instead of automatic content retrieval
+> - Assignment/Quiz endpoints use different parameter names than originally documented
+
 ---
 
 ## 🚀 Overview
@@ -359,20 +365,26 @@ Content-Type: application/json
 
 ### 4. AI Tutoring System
 
-#### Ask AI Tutor
+#### Ask AI Tutor (Advanced - Requires Pre-processed Chunks)
 ```bash
 POST /tutor/ask
 Content-Type: application/json
 
 {
   "question": "Explain photosynthesis in simple terms",
-  "book_id": "550e8400-e29b-41d4-a716-446655440000",  // Optional
-  "context_limit": 3  // Optional, default: 3
+  "chunks": ["Photosynthesis is the process...", "Plants use chlorophyll..."],  // Required
+  "class_no": "10",  // Required
+  "board": "CBSE",  // Required
+  "subject": "Biology",  // Required
+  "model": "gpt-4o-mini",  // Optional
+  "max_tokens": 1000  // Optional
 }
 ```
 
+**Note:** This endpoint requires you to provide the relevant text chunks manually. For automatic search + AI response, use `/tutor/search-and-ask` instead.
+
 **AI Processing:**
-1. **Context Retrieval**: Semantic search for relevant content
+1. **Text Processing**: Uses provided chunks directly
 2. **Prompt Engineering**: Educational template with context
 3. **AI Generation**: GPT-4o-mini for educational responses
 4. **HTML Formatting**: Clean, displayable format
@@ -384,40 +396,49 @@ Content-Type: application/json
   "data": {
     "question": "Explain photosynthesis in simple terms",
     "answer": "<h3>Photosynthesis Explained</h3>\n<p>Photosynthesis is like a kitchen where plants make their own food! Here's how it works:</p>\n<ul>\n<li><strong>Ingredients:</strong> Carbon dioxide from air + Water from roots + Sunlight</li>\n<li><strong>Factory:</strong> Green leaves (containing chlorophyll)</li>\n<li><strong>Product:</strong> Glucose (plant food) + Oxygen (released to air)</li></ul>\n<p><em>Simple equation: 6CO₂ + 6H₂O + Light → C₆H₁₂O₆ + 6O₂</em></p>",
-    "sources": [
-      {
-        "book_id": "550e8400-e29b-41d4-a716-446655440000",
-        "filename": "Biology_Class10_NCERT.pdf",
-        "content": "Photosynthesis is the process by which green plants...",
-        "similarity_score": 0.92
-      }
-    ],
     "metadata": {
-      "ai_model": "gpt-4o-mini",
-      "response_time": "2.3s",
-      "context_chunks": 3,
-      "total_tokens": 245
+      "class_no": "10",
+      "board": "CBSE",
+      "subject": "Biology",
+      "chunks_count": 2,
+      "model_used": "gpt-4o-mini",
+      "tokens_used": {
+        "prompt_tokens": 123,
+        "completion_tokens": 87,
+        "total_tokens": 210
+      },
+      "response_time_ms": 2300,
+      "timestamp": "2024-01-15T10:30:00Z"
     }
   }
 }
 ```
 
-#### Search and Ask (Combined)
+#### Search and Ask (Recommended - One-Step Process)
 ```bash
 POST /tutor/search-and-ask
 Content-Type: application/json
 
 {
   "question": "What are the types of chemical reactions?",
-  "search_limit": 5,  // Optional
-  "book_id": "550e8400-e29b-41d4-a716-446655440000"  // Optional
+  "class_no": "10",  // Required
+  "board": "CBSE",  // Required
+  "subject": "Chemistry",  // Required
+  "book_id": "550e8400-e29b-41d4-a716-446655440000",  // Optional
+  "search_limit": 5,  // Optional, default: 5
+  "min_score": 0.3,  // Optional, default: 0.3
+  "model": "gpt-4o-mini",  // Optional
+  "max_tokens": 1000  // Optional
 }
 ```
 
 **One-Step Process:**
-- Automatically finds relevant content
-- Generates educational response
-- Returns both search results and AI answer
+- Automatically searches for relevant content using semantic similarity
+- Filters results by minimum similarity score
+- Generates educational response using retrieved chunks
+- Returns AI answer with search metadata
+
+**This is the recommended endpoint for most use cases as it combines search and AI tutoring automatically.**
 
 ---
 
@@ -429,13 +450,18 @@ POST /lecture/generate
 Content-Type: application/json
 
 {
-  "book_id": "550e8400-e29b-41d4-a716-446655440000",
-  "class_no": "10",
-  "board": "CBSE",
-  "subject": "Physics",
-  "chapter": "Light - Reflection and Refraction",  // Optional
-  "style": "comprehensive",  // Optional: comprehensive|concise|interactive|visual|practical
-  "include_visuals": true    // Optional, default: true
+  "book_id": "550e8400-e29b-41d4-a716-446655440000",  // Required
+  "class_no": "10",  // Required
+  "board": "CBSE",  // Required
+  "subject": "Physics",  // Required
+  "topic": "Light - Reflection and Refraction",  // Optional
+  "chunk_limit": 10,  // Optional, default: 10
+  "chunk_offset": 0,  // Optional, default: 0 (for pagination)
+  "model": "gpt-4o-mini",  // Optional
+  "max_tokens": 3000,  // Optional
+  "include_visuals": true,  // Optional, default: true
+  "lecture_style": "comprehensive"  // Optional: comprehensive|concise|interactive
+}
 }
 ```
 
@@ -443,8 +469,8 @@ Content-Type: application/json
 - **comprehensive**: Detailed explanations with theory and examples
 - **concise**: Key points and summaries
 - **interactive**: Quizzes and hands-on activities
-- **visual**: Diagram-heavy with minimal text
-- **practical**: Real-world applications and experiments
+
+**Note:** The visual and practical styles from documentation are not implemented. Only comprehensive, concise, and interactive styles are supported.
 
 **AI Generation Pipeline:**
 1. **Content Analysis**: Semantic search for chapter content
@@ -725,26 +751,6 @@ GET /books/:book_id
 
 ### 7. System Management
 
-#### Clear All Data
-```bash
-DELETE /books/all
-```
-
-**Warning:** This permanently deletes all uploaded documents and vectors.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "deleted_books": 5,
-    "deleted_chunks": 6250,
-    "storage_cleared": "qdrant",
-    "message": "All data cleared successfully"
-  }
-}
-```
-
 #### System Statistics
 ```bash
 GET /stats
@@ -758,6 +764,21 @@ GET /stats
     "system": {
       "uptime": "5h 23m 15s",
       "memory_usage": "87.3 MB",
+      "total_books": 12,
+      "total_chunks": 6250,
+      "vector_store": {
+        "type": "qdrant",
+        "status": "connected",
+        "collections": 1
+      },
+      "embedding_model": "all-MiniLM-L6-v2",
+      "openai_configured": true
+    }
+  }
+}
+```
+
+**Note:** The `DELETE /books/all` endpoint mentioned in the overview is not currently implemented in the server. To delete books, use the individual `DELETE /books/:bookId` endpoint for each book.
       "cpu_usage": "12%",
       "node_version": "v18.17.0"
     },
@@ -2694,13 +2715,13 @@ POST /api/v1/assignment/generate
   "board": "CBSE",
   "subject": "English Literature",
   "topic": "Character Analysis",
-  "assignment_type": "document",
-  "deadline_days": 6,
-  "total_marks": 20,
-  "chunk_limit": 8,
+  "chunk_limit": 5,
   "chunk_offset": 0,
+  "difficulty": "medium",
+  "assignment_type": "mixed",
+  "question_count": 5,
   "model": "gpt-4o-mini",
-  "max_tokens": 3000
+  "max_tokens": 2000
 }
 ```
 
@@ -2710,13 +2731,13 @@ POST /api/v1/assignment/generate
 - **board** (required): Educational board (e.g., "CBSE", "ICSE")
 - **subject** (required): Subject name
 - **topic** (optional): Specific topic focus
-- **assignment_type**: Always "document" for document-based assignments
-- **deadline_days**: Number of days to complete (5-7 recommended)
-- **total_marks**: Total marks for the assignment (15-20)
-- **chunk_limit**: Number of document chunks to use (1-10)
-- **chunk_offset**: Starting offset for chunk selection
+- **chunk_limit**: Number of document chunks to use (default: 5)
+- **chunk_offset**: Starting offset for chunk selection (default: 0)
+- **difficulty**: Assignment difficulty level - "easy", "medium", "hard" (default: "medium")
+- **assignment_type**: Type of assignment - "essay", "mcq", "short_answer", "mixed" (default: "mixed")
+- **question_count**: Number of questions to generate (default: 5)
 - **model**: AI model to use (default: "gpt-4o-mini")
-- **max_tokens**: Maximum response tokens
+- **max_tokens**: Maximum response tokens (default: 2000)
 
 #### Response
 ```json
