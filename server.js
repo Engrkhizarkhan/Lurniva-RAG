@@ -1814,18 +1814,23 @@ app.get("/api/v1/stats", async (req, res) => {
 
 /**
  * POST /api/v1/tutor/ask
- * AI Tutoring API - Send chunks and metadata to OpenAI for educational responses
+ * AI Tutoring API - Process highlighted lecture text with student question and RAG database search
  */
 app.post("/api/v1/tutor/ask", async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { 
       question, 
-      chunks, 
+      highlighted_text,
+      book_id,
       class_no, 
       board, 
       subject,
+      search_limit = 5,
+      min_score = 0.3,
       model = "gpt-4o-mini",
-      max_tokens = 1000
+      max_tokens = 1500
     } = req.body;
 
     // Validation
@@ -1836,10 +1841,17 @@ app.post("/api/v1/tutor/ask", async (req, res) => {
       });
     }
 
-    if (!chunks || !Array.isArray(chunks) || chunks.length === 0) {
+    if (!highlighted_text || highlighted_text.trim().length === 0) {
       return res.status(400).json({
         success: false,
-        error: { code: "INVALID_CHUNKS", message: "Chunks array is required and must not be empty" }
+        error: { code: "INVALID_HIGHLIGHTED_TEXT", message: "Highlighted text from lecture is required" }
+      });
+    }
+
+    if (!book_id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_BOOK_ID", message: "Book ID is required for RAG search" }
       });
     }
 
@@ -1857,66 +1869,88 @@ app.post("/api/v1/tutor/ask", async (req, res) => {
       });
     }
 
-    // Prepare chunks text
-    const chunksText = chunks.map((chunk, index) => {
-      if (typeof chunk === 'string') {
-        return `Chunk ${index + 1}:\n${chunk}`;
-      } else if (chunk.text) {
-        return `Chunk ${index + 1}:\n${chunk.text}`;
-      } else {
-        return `Chunk ${index + 1}:\n${JSON.stringify(chunk)}`;
-      }
-    }).join('\n\n');
+    if (!embeddingModel) {
+      return res.status(503).json({
+        success: false,
+        error: { code: "EMBEDDING_MODEL_NOT_READY", message: "Embedding model is still loading" }
+      });
+    }
 
-    // Create the tutor prompt
-    const tutorPrompt = `You are an AI tutor for a learning platform.
+    console.log(`\n🎓 AI Tutor Request (Lecture + RAG):`);
+    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
+    console.log(`   Book ID: ${book_id}`);
+    console.log(`   Question: ${question.substring(0, 100)}${question.length > 100 ? '...' : ''}`);
+    console.log(`   Highlighted Text: ${highlighted_text.substring(0, 150)}${highlighted_text.length > 150 ? '...' : ''}`);
 
-Inputs:
-• Retrieved textbook chunks
-• Metadata: Class ${class_no}, Board ${board}, Subject ${subject}
+    // Step 1: Search RAG database for relevant chunks
+    console.log(`   📚 Searching RAG database...`);
+    const queryVector = await generateEmbedding(question);
+    let searchResults = await searchVectors(queryVector, Math.min(search_limit, 10), book_id);
+    
+    // Filter by min_score
+    if (min_score > 0) {
+      searchResults = searchResults.filter(r => r.score >= min_score);
+    }
 
-Rules:
-1. Answer ONLY using the provided chunks.
-2. Do NOT use external knowledge or assumptions.
-3. If the answer is not in the chunks, say: "This topic is not covered in the provided material."
-4. Keep explanations simple and suitable for Class ${class_no}.
-5. Respond ONLY in valid HTML (no Markdown).
-6. Use <h3>, <p>, <ul>, <li>, <strong> as needed.
-7. If a video link exists, embed it using <iframe>.
-8. If diagrams/images are referenced, explain them clearly.
-9. If the question is unrelated to the subject or chunks, state that politely.
-10. Do not mention chunks, retrieval, or system behavior.
+    console.log(`   Found ${searchResults.length} relevant chunks from book`);
 
-Goal: Provide clear, syllabus-aligned answers within the given material only.
+    // Step 2: Prepare content sections
+    const ragChunksText = searchResults.length > 0 
+      ? searchResults.map((result, index) => 
+          `--- TEXTBOOK CHUNK ${index + 1} (Score: ${result.score.toFixed(3)}) ---\n${result.payload.text}`
+        ).join('\n\n')
+      : "No relevant textbook content found for this question.";
 
---- PROVIDED CHUNKS ---
-${chunksText}
+    // Step 3: Create enhanced tutor prompt
+    const tutorPrompt = `You are an AI tutor for a learning platform helping students understand their lessons.
+
+CONTEXT:
+• Student is in Class ${class_no}, studying ${subject} under ${board} board
+• Student highlighted text from their lecture and asked a question
+• You have access to relevant textbook content from RAG database
+
+TASK:
+Answer the student's question by combining:
+1. The highlighted lecture text (primary context)
+2. Relevant textbook knowledge (supporting information)
+3. Your educational guidance
+
+RULES:
+1. Start by acknowledging the highlighted text from their lecture
+2. Use textbook content to provide deeper understanding and context
+3. If textbook content is not relevant, focus on the highlighted text
+4. Keep explanations simple and suitable for Class ${class_no}
+5. Respond ONLY in valid HTML (no Markdown)
+6. Use <h3>, <p>, <ul>, <li>, <strong> tags appropriately
+7. If diagrams/images are mentioned, explain them clearly
+8. Connect lecture content with textbook knowledge when relevant
+9. Provide practical examples when helpful
+10. End with a brief summary or key takeaway
+
+--- HIGHLIGHTED LECTURE TEXT ---
+${highlighted_text}
+
+--- RELEVANT TEXTBOOK CONTENT ---
+${ragChunksText}
 
 --- STUDENT QUESTION ---
 ${question}
 
 --- YOUR RESPONSE (HTML ONLY) ---`;
 
-    console.log(`\n🤖 AI Tutor Request:`);
-    console.log(`   Class: ${class_no} | Board: ${board} | Subject: ${subject}`);
-    console.log(`   Question: ${question.substring(0, 100)}${question.length > 100 ? '...' : ''}`);
-    console.log(`   Chunks: ${chunks.length}`);
-
-    // Call OpenAI API
+    // Step 4: Call OpenAI API
     try {
       const OpenAI = await import('openai').then(module => module.default);
       const openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY
       });
-
-      const startTime = Date.now();
       
       const completion = await openai.chat.completions.create({
         model: model,
         messages: [
           {
             role: "system",
-            content: "You are an AI tutor that provides educational responses in HTML format only. Follow the rules exactly as specified."
+            content: "You are an expert educational AI tutor. Help students by combining their lecture content with textbook knowledge. Always respond in valid HTML format only."
           },
           {
             role: "user",
@@ -1924,28 +1958,44 @@ ${question}
           }
         ],
         max_tokens: max_tokens,
-        temperature: 0.3, // Lower temperature for more consistent educational responses
+        temperature: 0.7, // Balanced temperature for educational responses
       });
 
       const responseTime = Date.now() - startTime;
       const aiResponse = completion.choices[0].message.content;
       const tokensUsed = completion.usage;
-
-      console.log(`   ✓ Response generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+      
+      console.log(`   ✅ Response generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
 
       res.json({
         success: true,
         data: {
           question: question,
+          highlighted_text: highlighted_text,
           answer: aiResponse,
+          search_results: {
+            book_id: book_id,
+            chunks_found: searchResults.length,
+            min_score_used: min_score,
+            chunks: searchResults.map(r => ({
+              chunk_id: r.id,
+              score: parseFloat(r.score.toFixed(4)),
+              text_preview: r.payload.text.substring(0, 200) + '...',
+              chunk_index: r.payload.chunk_index,
+              file_name: r.payload.file_name
+            }))
+          },
           metadata: {
             class_no: class_no,
             board: board,
             subject: subject,
-            chunks_count: chunks.length,
             model_used: model,
             tokens_used: tokensUsed,
             response_time_ms: responseTime,
+            highlighted_text_length: highlighted_text.length,
+            rag_chunks_used: searchResults.length,
+            search_limit: search_limit,
+            min_score: min_score,
             timestamp: new Date().toISOString()
           }
         }

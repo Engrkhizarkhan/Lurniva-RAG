@@ -418,13 +418,21 @@
         <div class="output" id="deleteOutput"></div>
       </div>
 
-      <!-- AI Tutor: Ask with Chunks -->
+      <!-- AI Tutor: Ask with Highlighted Text -->
       <div class="card full-width">
-        <h2><span class="method post">POST</span> AI Tutor - Ask with Chunks</h2>
+        <h2><span class="method post">POST</span> AI Tutor - Highlighted Text + RAG</h2>
         <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/tutor/ask</p>
         <div class="form-group">
           <label>Student Question</label>
-          <input type="text" id="tutorQuestion" placeholder="What is photosynthesis?">
+          <input type="text" id="tutorQuestion" placeholder="How does this process work in different plants?">
+        </div>
+        <div class="form-group">
+          <label>Highlighted Lecture Text</label>
+          <textarea id="tutorHighlightedText" rows="3" placeholder="Text highlighted by student from their lecture...">Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide. Plants convert light energy into chemical energy stored in glucose.</textarea>
+        </div>
+        <div class="form-group">
+          <label>Book ID <span class="tooltip" title="Required for RAG database search">ℹ️</span></label>
+          <input type="text" id="tutorBookId" placeholder="e.g., book_12345" value="">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="form-group">
@@ -440,10 +448,15 @@
             <input type="text" id="tutorSubject" placeholder="e.g., Biology" value="Biology">
           </div>
         </div>
-        <div class="form-group">
-          <label>Text Chunks (one per line)</label>
-          <textarea id="tutorChunks" rows="4" placeholder="Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide.&#10;The chloroplasts in plant cells contain chlorophyll which captures light energy.">Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide.
-The chloroplasts in plant cells contain chlorophyll which captures light energy.</textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Search Limit</label>
+            <input type="number" id="tutorSearchLimit" value="5" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label>Min Score</label>
+            <input type="number" id="tutorMinScore" value="0.3" min="0" max="1" step="0.1">
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="form-group">
@@ -1349,19 +1362,20 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
     // Ask AI Tutor with Chunks
     async function askTutor() {
       const question = document.getElementById('tutorQuestion').value.trim();
+      const highlightedText = document.getElementById('tutorHighlightedText').value.trim();
+      const bookId = document.getElementById('tutorBookId').value.trim();
       const classNo = document.getElementById('tutorClass').value.trim();
       const board = document.getElementById('tutorBoard').value.trim();
       const subject = document.getElementById('tutorSubject').value.trim();
-      const chunksText = document.getElementById('tutorChunks').value.trim();
+      const searchLimit = parseInt(document.getElementById('tutorSearchLimit').value) || 5;
+      const minScore = parseFloat(document.getElementById('tutorMinScore').value) || 0.3;
       const model = document.getElementById('tutorModel').value;
-      const maxTokens = parseInt(document.getElementById('tutorMaxTokens').value) || 1000;
+      const maxTokens = parseInt(document.getElementById('tutorMaxTokens').value) || 1500;
       
-      if (!question || !classNo || !board || !subject || !chunksText) {
-        showOutput('tutorOutput', { error: 'All fields are required' }, true);
+      if (!question || !highlightedText || !bookId || !classNo || !board || !subject) {
+        showOutput('tutorOutput', { error: 'Question, highlighted text, book ID, class, board, and subject are required' }, true);
         return;
       }
-      
-      const chunks = chunksText.split('\n').filter(chunk => chunk.trim().length > 0);
       
       showLoading('tutorOutput');
       try {
@@ -1370,10 +1384,13 @@ The chloroplasts in plant cells contain chlorophyll which captures light energy.
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             question: question,
-            chunks: chunks,
+            highlighted_text: highlightedText,
+            book_id: bookId,
             class_no: classNo,
             board: board,
             subject: subject,
+            search_limit: searchLimit,
+            min_score: minScore,
             model: model,
             max_tokens: maxTokens
           })

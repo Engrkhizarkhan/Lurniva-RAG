@@ -1950,9 +1950,9 @@ CREATE TABLE books (
 
 ## AI Tutoring Endpoints
 
-### Ask AI Tutor (with provided chunks)
+### Ask AI Tutor (with highlighted lecture text)
 
-Send chunks and metadata to AI tutor for educational responses.
+Process highlighted lecture text with student question and RAG database search for comprehensive educational responses.
 
 ```
 POST /api/v1/tutor/ask
@@ -1964,12 +1964,15 @@ Content-Type: application/json
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | question | string | Yes | - | Student's question |
-| chunks | array | Yes | - | Array of text chunks or objects with text property |
+| highlighted_text | string | Yes | - | Text highlighted by student from lecture |
+| book_id | string | Yes | - | Book ID for RAG database search |
 | class_no | string/number | Yes | - | Student's class number (e.g., "10", "12") |
 | board | string | Yes | - | Educational board (e.g., "CBSE", "ICSE", "State Board") |
 | subject | string | Yes | - | Subject name (e.g., "Physics", "Mathematics") |
+| search_limit | number | No | 5 | Maximum number of chunks to retrieve from RAG |
+| min_score | number | No | 0.3 | Minimum similarity score for chunk retrieval |
 | model | string | No | "gpt-4o-mini" | OpenAI model to use |
-| max_tokens | number | No | 1000 | Maximum response tokens |
+| max_tokens | number | No | 1500 | Maximum response tokens |
 
 #### cURL Example
 
@@ -1977,14 +1980,14 @@ Content-Type: application/json
 curl -X POST http://localhost:3000/api/v1/tutor/ask \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "What is photosynthesis?",
-    "chunks": [
-      "Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide.",
-      "The chloroplasts in plant cells contain chlorophyll which captures light energy."
-    ],
+    "question": "How does this process work in different types of plants?",
+    "highlighted_text": "Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide. Plants convert light energy into chemical energy stored in glucose.",
+    "book_id": "book_12345",
     "class_no": "10",
     "board": "CBSE",
-    "subject": "Biology"
+    "subject": "Biology",
+    "search_limit": 5,
+    "min_score": 0.3
   }'
 ```
 
@@ -1995,19 +1998,20 @@ const response = await fetch('http://localhost:3000/api/v1/tutor/ask', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    question: "Explain Newton's first law of motion",
-    chunks: [
-      "Newton's first law states that an object at rest stays at rest...",
-      "This law is also known as the law of inertia..."
-    ],
+    question: "What happens when forces are balanced?",
+    highlighted_text: "Newton's first law states that an object at rest stays at rest and an object in motion stays in motion unless acted upon by an unbalanced force.",
+    book_id: "physics_book_456",
     class_no: "11",
     board: "CBSE",
-    subject: "Physics"
+    subject: "Physics",
+    search_limit: 5,
+    min_score: 0.3
   })
 });
 
 const result = await response.json();
 console.log(result.data.answer); // HTML response
+console.log(result.data.search_results); // RAG search results
 ```
 
 #### Response (200 OK)
@@ -2016,21 +2020,38 @@ console.log(result.data.answer); // HTML response
 {
   "success": true,
   "data": {
-    "question": "What is photosynthesis?",
-    "answer": "<h3>Photosynthesis</h3><p>Photosynthesis is the process by which <strong>green plants make their own food</strong> using three main components:</p><ul><li>Sunlight (light energy)</li><li>Water (H₂O)</li><li>Carbon dioxide (CO₂)</li></ul><p>This process takes place in the <strong>chloroplasts</strong> of plant cells, which contain a green pigment called <strong>chlorophyll</strong> that captures light energy from the sun.</p>",
+    "question": "How does this process work in different types of plants?",
+    "highlighted_text": "Photosynthesis is the process by which green plants make their own food using sunlight, water, and carbon dioxide. Plants convert light energy into chemical energy stored in glucose.",
+    "answer": "<h3>Understanding Photosynthesis Across Plant Types</h3><p>Based on your highlighted text about photosynthesis, let me explain how this process works differently in various plants:</p><p>The basic process you highlighted is correct - <strong>photosynthesis converts light energy into chemical energy (glucose)</strong>. However, different plants have evolved variations:</p><ul><li><strong>C3 Plants:</strong> Most common plants use the Calvin cycle directly</li><li><strong>C4 Plants:</strong> Corn and sugarcane have adapted mechanisms for hot climates</li><li><strong>CAM Plants:</strong> Cacti and succulents open stomata at night to conserve water</li></ul><p>All types still follow your highlighted principle of converting sunlight, water, and CO₂ into glucose and oxygen.</p>",
+    "search_results": {
+      "book_id": "book_12345",
+      "chunks_found": 3,
+      "min_score_used": 0.3,
+      "chunks": [
+        {
+          "chunk_id": "chunk_789",
+          "score": 0.87,
+          "text_preview": "C4 photosynthesis is an adaptation found in plants like corn and sugarcane. These plants have evolved a mechanism to concentrate CO2 around the enzyme RuBisCO...",
+          "chunk_index": 45
+        }
+      ]
+    },
     "metadata": {
       "class_no": "10",
       "board": "CBSE", 
       "subject": "Biology",
-      "chunks_count": 2,
       "model_used": "gpt-4o-mini",
       "tokens_used": {
-        "prompt_tokens": 245,
-        "completion_tokens": 87,
-        "total_tokens": 332
+        "prompt_tokens": 456,
+        "completion_tokens": 142,
+        "total_tokens": 598
       },
-      "response_time_ms": 1250,
-      "timestamp": "2026-01-25T10:30:00.000Z"
+      "response_time_ms": 1450,
+      "highlighted_text_length": 156,
+      "rag_chunks_used": 3,
+      "search_limit": 5,
+      "min_score": 0.3,
+      "timestamp": "2026-02-04T10:30:00.000Z"
     }
   }
 }
