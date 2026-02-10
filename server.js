@@ -1078,7 +1078,6 @@ async function processVisualElements(lectureContent, subject, classNo, includeVi
   const imageMatches = lectureContent.match(/\{\{IMAGE: ([^}]+)\}\}/g) || [];
   const diagramMatches = lectureContent.match(/\{\{DIAGRAM: ([^}]+)\}\}/g) || [];
   const chartMatches = lectureContent.match(/\{\{CHART: ([^}]+)\}\}/g) || [];
-  const interactiveMatches = lectureContent.match(/\{\{INTERACTIVE: ([^}]+)\}\}/g) || [];
 
   // Process Images
   for (const match of imageMatches) {
@@ -1158,36 +1157,6 @@ async function processVisualElements(lectureContent, subject, classNo, includeVi
         </div>`;
     
     processedContent = processedContent.replace(match, diagramHtml);
-  }
-
-  // Process Interactive Elements
-  for (const match of interactiveMatches) {
-    const description = match.replace(/\{\{INTERACTIVE: /, '').replace(/\}\}/, '');
-    
-    visualAssets.push({
-      type: 'interactive',
-      description: description,
-      data: {
-        activity_type: description.toLowerCase().includes('quiz') ? 'quiz' : 'exercise',
-        description: description,
-        suggestions: [
-          "Create multiple choice questions",
-          "Add interactive elements", 
-          "Include student engagement activities"
-        ]
-      },
-      id: `interactive_${visualAssets.length + 1}`
-    });
-
-    const interactiveHtml = `<div class="interactive-element" style="border: 2px solid #28a745; background: #f8fff9; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h4 style="color: #28a745; margin-bottom: 10px;">🎯 Interactive Activity</h4>
-        <p><strong>${description}</strong></p>
-        <div style="margin-top: 15px; padding: 15px; background: white; border: 1px dashed #28a745; border-radius: 5px;">
-          <small style="color: #666;">💡 Interactive element - implement in your frontend dashboard</small>
-        </div>
-      </div>`;
-    
-    processedContent = processedContent.replace(match, interactiveHtml);
   }
 
   return {
@@ -3632,7 +3601,6 @@ When you want to include visual elements, use this EXACT format:
 - For Images: {{IMAGE: [detailed description for image generation]}}
 - For Diagrams: {{DIAGRAM: [detailed description of diagram/flowchart needed]}}  
 - For Charts: {{CHART: [chart type and data description]}}
-- For Interactive: {{INTERACTIVE: [quiz/exercise description]}}
 
 Example: {{IMAGE: A detailed cross-section diagram of a plant cell showing chloroplasts, nucleus, cell wall, and vacuoles for Class ${class_no} ${subject} students}}
 ` : ''}
@@ -3649,7 +3617,8 @@ ${topic ? `FOCUS TOPIC: "${topic}" - Ensure this topic gets special emphasis in 
 
 STYLE: ${lecture_style === 'comprehensive' ? 'Detailed explanations with examples' : 
          lecture_style === 'concise' ? 'Concise but complete coverage' : 
-         'Interactive with engaging activities'}
+         lecture_style === 'visual' ? 'Rich visual content with clear explanations' :
+         'Practical examples with real-world applications'}
 
 Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean HTML.`;
 
@@ -3668,7 +3637,7 @@ Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean 
       messages: [
         {
           role: "system",
-          content: `You are an expert educator specializing in ${subject} for ${board} board. Create engaging, curriculum-aligned lectures in HTML format only. Always include visual placeholders and interactive elements to enhance learning.`
+          content: `You are an expert educator specializing in ${subject} for ${board} board. Create engaging, curriculum-aligned lectures in HTML format only. Always include visual placeholders to enhance learning.`
         },
         {
           role: "user",
@@ -3723,8 +3692,7 @@ Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean 
             total_visual_elements: visualAssets.length,
             images_generated: visualAssets.filter(v => v.type === 'image').length,
             diagrams_generated: visualAssets.filter(v => v.type === 'diagram').length,
-            charts_created: visualAssets.filter(v => v.type === 'chart').length,
-            interactive_elements: visualAssets.filter(v => v.type === 'interactive').length
+            charts_created: visualAssets.filter(v => v.type === 'chart').length
           },
           generation_settings: {
             model_used: model,
