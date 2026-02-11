@@ -171,7 +171,8 @@
   <div class="container">
     <header>
       <h1>🧪 Lurniva RAG - API Test Console</h1>
-      <p class="subtitle">Test all API endpoints</p>
+      <p class="subtitle">Test all 22 API endpoints</p>
+      <p class="subtitle" style="color:#00d9ff;font-size:0.85em;margin-top:5px;">✨ New: Study Plans, Chapter Extraction & Auto-Detection</p>
     </header>
 
     <!-- Parameter Guide -->
@@ -403,6 +404,151 @@
         
         <button onclick="generateLecture()">🎓 Generate Educational Lecture</button>
         <div class="output" id="lectureOutput"></div>
+      </div>
+
+      <!-- Generate Study Plan -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 📅 Generate Study Plan</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books/:bookId/generate-study-plan</p>
+        
+        <div class="form-group">
+          <label>Book ID <span style="color: red;">*</span></label>
+          <input type="text" id="studyPlanBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Total Days <span style="color: red;">*</span> <span class="tooltip" title="How many days to complete the book (e.g., 30, 60, 100)">ℹ️</span></label>
+            <input type="number" id="studyPlanDays" placeholder="30" value="30" min="1" max="200">
+          </div>
+          <div style="flex: 1;">
+            <label>Class Number <span style="color: red;">*</span></label>
+            <input type="text" id="studyPlanClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div style="flex: 1;">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="studyPlanBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div style="flex: 1;">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="studyPlanSubject" placeholder="e.g., Biology" value="Biology">
+          </div>
+        </div>
+        
+        <p style="color:#ffc107;font-size:0.9em;margin:10px 0;"><strong>⏱️ Note:</strong> This will analyze the entire book and generate topics for each day. May take 30-60 seconds for large plans.</p>
+        
+        <button onclick="generateStudyPlan()">📅 Generate Study Plan</button>
+        <div class="output" id="studyPlanOutput"></div>
+      </div>
+
+      <!-- Extract Chapters -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 📚 Extract Book Chapters</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/books/:bookId/extract-chapters</p>
+        
+        <div class="form-group">
+          <label>Book ID <span style="color: red;">*</span></label>
+          <input type="text" id="extractChaptersBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="extractChaptersSubject" placeholder="e.g., Biology" value="Biology">
+          </div>
+          <div style="flex: 1;">
+            <label>Class Number <span style="color: red;">*</span></label>
+            <input type="text" id="extractChaptersClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div style="flex: 1;">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="extractChaptersBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+        </div>
+        
+        <p style="color:#ffc107;font-size:0.9em;margin:10px 0;"><strong>🤖 AI Analysis:</strong> The system will automatically detect chapters and topics from your textbook. This is a one-time operation.</p>
+        
+        <button onclick="extractChapters()">📚 Extract Chapters</button>
+        <div class="output" id="extractChaptersOutput"></div>
+      </div>
+
+      <!-- Generate Lecture by Topic (Chunk-based with Auto-Detection) -->
+      <div class="card full-width">
+        <h2><span class="method post">POST</span> 📖 Generate Lecture by Topic</h2>
+        <p style="color:#888;font-size:0.9em;margin-bottom:15px">/api/v1/lecture/generate-by-topic</p>
+        
+        <div class="form-group">
+          <label>Book ID <span style="color: red;">*</span></label>
+          <input type="text" id="topicLectureBookId" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Chunk Limit <span style="color: red;">*</span></label>
+            <input type="number" id="topicLectureLimit" placeholder="e.g., 10" value="10" min="1">
+          </div>
+          <div style="flex: 1;">
+            <label>Chunk Offset</label>
+            <input type="number" id="topicLectureOffset" placeholder="e.g., 0" value="0" min="0">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>Class Number <span style="color: red;">*</span></label>
+            <input type="text" id="topicLectureClass" placeholder="e.g., 10" value="10">
+          </div>
+          <div style="flex: 1;">
+            <label>Board <span style="color: red;">*</span></label>
+            <input type="text" id="topicLectureBoard" placeholder="e.g., CBSE" value="CBSE">
+          </div>
+          <div style="flex: 1;">
+            <label>Subject <span style="color: red;">*</span></label>
+            <input type="text" id="topicLectureSubject" placeholder="e.g., Biology" value="Biology">
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div style="flex: 1;">
+            <label>AI Model</label>
+            <select id="topicLectureModel">
+              <option value="gpt-4o-mini">GPT-4o Mini (Fast)</option>
+              <option value="gpt-4o">GPT-4o (Best Quality)</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label>Max Tokens</label>
+            <select id="topicLectureMaxTokens">
+              <option value="3000" selected>3000 tokens</option>
+              <option value="4000">4000 tokens</option>
+              <option value="6000">6000 tokens</option>
+            </select>
+          </div>
+          <div style="flex: 1; display: flex; align-items: end;">
+            <label style="display: flex; align-items: center; cursor: pointer; padding: 10px; background: rgba(40, 167, 69, 0.1); border-radius: 6px; margin-top: 22px; width: 100%;">
+              <input type="checkbox" id="topicLectureVisuals" checked style="margin-right: 8px;">
+              Include Visual Elements
+            </label>
+          </div>
+        </div>
+        
+        <div style="margin: 15px 0;">
+          <label style="display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(33, 150, 243, 0.1); border-radius: 8px; border: 2px dashed rgba(33, 150, 243, 0.3);">
+            <input type="checkbox" id="topicLectureFullChapter" style="margin-right: 10px;">
+            <span>
+              <strong style="color: #2196f3;">Full Chapter Mode</strong>
+              <small style="display: block; color: #666; margin-top: 4px;">Analyze chunks as complete chapter instead of individual topics</small>
+            </span>
+          </label>
+        </div>
+        
+        <p style="color:#888;font-size:0.9em;margin:10px 0;">
+          <strong>💡 How it works:</strong> System auto-detects chapter name and topics from your chunks. 
+          Enable "Full Chapter Mode" if these chunks represent a complete chapter.
+        </p>
+        
+        <button onclick="generateTopicLecture()">📖 Generate Topic Lecture</button>
+        <div class="output" id="topicLectureOutput"></div>
       </div>
 
       <!-- Delete Book -->
@@ -1090,6 +1236,119 @@
         showOutput('getBookOutput', data, !data.success);
       } catch (e) {
         showOutput('getBookOutput', { error: e.message }, true);
+      }
+    }
+
+    // Generate Study Plan
+    async function generateStudyPlan() {
+      const bookId = document.getElementById('studyPlanBookId').value.trim();
+      const totalDays = parseInt(document.getElementById('studyPlanDays').value);
+      const classNo = document.getElementById('studyPlanClass').value.trim();
+      const board = document.getElementById('studyPlanBoard').value.trim();
+      const subject = document.getElementById('studyPlanSubject').value.trim();
+      
+      if (!bookId || !totalDays || !classNo || !board || !subject) {
+        showOutput('studyPlanOutput', { error: 'All fields are required' }, true);
+        return;
+      }
+      
+      showLoading('studyPlanOutput');
+      try {
+        const res = await fetch(`${API_BASE}/books/${bookId}/generate-study-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            total_days: totalDays,
+            class_no: classNo,
+            board: board,
+            subject: subject
+          })
+        });
+        const data = await res.json();
+        showOutput('studyPlanOutput', data, !data.success);
+      } catch (e) {
+        showOutput('studyPlanOutput', { error: e.message }, true);
+      }
+    }
+
+    // Get Study Plan - Deprecated
+    // Study plans are now generated on-demand and not stored
+
+    // Extract Chapters
+    async function extractChapters() {
+      const bookId = document.getElementById('extractChaptersBookId').value.trim();
+      const subject = document.getElementById('extractChaptersSubject').value.trim();
+      const classNo = document.getElementById('extractChaptersClass').value.trim();
+      const board = document.getElementById('extractChaptersBoard').value.trim();
+      
+      if (!bookId || !subject || !classNo || !board) {
+        showOutput('extractChaptersOutput', { error: 'All fields are required' }, true);
+        return;
+      }
+      
+      showLoading('extractChaptersOutput');
+      try {
+        const res = await fetch(`${API_BASE}/books/${bookId}/extract-chapters`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject: subject,
+            class_no: classNo,
+            board: board
+          })
+        });
+        const data = await res.json();
+        showOutput('extractChaptersOutput', data, !data.success);
+      } catch (e) {
+        showOutput('extractChaptersOutput', { error: e.message }, true);
+      }
+    }
+
+    // Get Chapters - Deprecated
+    // Chapter structures are now generated on-demand and not stored
+
+    // Generate Lecture by Topic (Chunk-based with auto-detection)
+    async function generateTopicLecture() {
+      const bookId = document.getElementById('topicLectureBookId').value.trim();
+      const chunkLimit = parseInt(document.getElementById('topicLectureLimit').value);
+      const chunkOffset = parseInt(document.getElementById('topicLectureOffset').value);
+      const classNo = document.getElementById('topicLectureClass').value.trim();
+      const board = document.getElementById('topicLectureBoard').value.trim();
+      const subject = document.getElementById('topicLectureSubject').value.trim();
+      const includeFullChapter = document.getElementById('topicLectureFullChapter').checked;
+      const model = document.getElementById('topicLectureModel').value;
+      const maxTokens = parseInt(document.getElementById('topicLectureMaxTokens').value);
+      const includeVisuals = document.getElementById('topicLectureVisuals').checked;
+      
+      if (!bookId || !classNo || !board || !subject) {
+        showOutput('topicLectureOutput', { error: 'Book ID, class, board, and subject are required' }, true);
+        return;
+      }
+      
+      showLoading('topicLectureOutput');
+      try {
+        const payload = {
+          book_id: bookId,
+          chunk_limit: chunkLimit,
+          chunk_offset: chunkOffset,
+          class_no: classNo,
+          board: board,
+          subject: subject,
+          include_full_chapter: includeFullChapter,
+          model: model,
+          max_tokens: maxTokens,
+          include_visuals: includeVisuals
+        };
+        
+        const res = await fetch(`${API_BASE}/lecture/generate-by-topic`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        showOutput('topicLectureOutput', data, !data.success);
+      } catch (e) {
+        showOutput('topicLectureOutput', { error: e.message }, true);
       }
     }
 

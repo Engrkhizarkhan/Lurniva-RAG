@@ -1188,6 +1188,54 @@ function chunkText(text, chunkSize = 600, overlap = 100) {
   return chunks.filter(c => c.length > 10);
 }
 
+// Auto-detect topic from content
+async function detectTopicFromContent(contentText, subject, classNo, model = "gpt-4o-mini") {
+  try {
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const detectionPrompt = `Analyze this educational content and provide a concise topic/chapter name.
+
+SUBJECT: ${subject}
+CLASS: ${classNo}
+
+CONTENT:
+${contentText.substring(0, 2000)}
+
+Return ONLY a short, clear topic name (3-8 words). Examples:
+- "Introduction to Photosynthesis"
+- "Newton's Laws of Motion"
+- "Chemical Bonding and Molecular Structure"
+- "The French Revolution"
+
+YOUR RESPONSE (topic name only):`;
+
+    const response = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        { role: "system", content: "You are an expert at identifying educational topics. Return only the topic name, nothing else." },
+        { role: "user", content: detectionPrompt }
+      ],
+      max_tokens: 50,
+      temperature: 0.3,
+    });
+
+    const detectedTopic = response.choices[0].message.content.trim();
+    return detectedTopic;
+  } catch (error) {
+    console.warn(`Topic detection failed: ${error.message}`);
+    return `${subject} - Study Session`; // Fallback
+  }
+}
+
+// Note: Book structures are NOT stored in vector DB anymore
+// This function is kept for backward compatibility but always returns null
+async function getBookStructure(bookId) {
+  return null;
+}
+
 // --------------------
 // API ENDPOINTS
 // --------------------
@@ -3579,6 +3627,17 @@ app.post("/api/v1/lecture/generate", async (req, res) => {
       return `Section ${actualIndex}:\n${chunk.text}`;
     }).join('\n\n');
 
+    // Step 3.5: Auto-detect topic if not provided
+    let detectedTopic = topic;
+    let topicDetectionMethod = 'user_provided';
+    
+    if (!topic) {
+      console.log(`   Auto-detecting topic from ${selectedChunks.length} chunks...`);
+      detectedTopic = await detectTopicFromContent(contentText, subject, class_no, model);
+      topicDetectionMethod = 'auto_detected';
+      console.log(`   ✓ Detected topic: "${detectedTopic}"`);
+    }
+
     // Step 4: Create comprehensive lecture prompt
     const lecturePrompt = `You are an expert educator creating a comprehensive lecture for ${subject} (Class ${class_no}, ${board} Board).
 
@@ -3613,7 +3672,7 @@ LECTURE STRUCTURE:
 5. Summary & Conclusion
 6. Review Questions
 
-${topic ? `FOCUS TOPIC: "${topic}" - Ensure this topic gets special emphasis in the lecture.` : ''}
+${detectedTopic ? `FOCUS TOPIC: "${detectedTopic}" - Ensure this topic gets special emphasis in the lecture.` : ''}
 
 STYLE: ${lecture_style === 'comprehensive' ? 'Detailed explanations with examples' : 
          lecture_style === 'concise' ? 'Concise but complete coverage' : 
@@ -3674,7 +3733,12 @@ Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean 
           class_no: class_no,
           board: board,
           subject: subject,
-          topic: topic || "Generated from book content",
+          topic: detectedTopic,
+          topic_detection: {
+            method: topicDetectionMethod,
+            confidence: topicDetectionMethod === 'user_provided' ? 'high' : 'medium',
+            original_input: topic || null
+          },
           chunks_used: {
             total_available: totalChunks,
             used_count: selectedChunks.length,
@@ -3726,6 +3790,517 @@ Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean 
     res.status(500).json({
       success: false,
       error: { code: "LECTURE_GENERATION_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * POST /api/v1/books/:bookId/generate-study-plan
+ * Pre-generate topic names for all chunk ranges (for day-by-day plans)
+ */
+app.post("/api/v1/books/:bookId/generate-study-plan", async (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const {
+      total_days,
+      class_no,
+      board,
+      subject,
+      chunks_per_day,
+      model = "gpt-4o-mini"
+    } = req.body;
+
+    if (!total_days || !class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { 
+          code: "MISSING_FIELDS", 
+          message: "total_days, class_no, board, and subject are required" 
+        }
+      });
+    }
+
+    console.log(`\n📅 Generating ${total_days}-day study plan for book: ${bookId}`);
+
+    const bookInfo = await getBookInfo(bookId);
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "BOOK_NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    const allChunks = await getBookChunks(bookId);
+    const totalChunks = allChunks.length;
+
+    const calculatedChunksPerDay = chunks_per_day || Math.ceil(totalChunks / total_days);
+    const actualDays = Math.ceil(totalChunks / calculatedChunksPerDay);
+
+    console.log(`   Total chunks: ${totalChunks}`);
+    console.log(`   Chunks per day: ${calculatedChunksPerDay}`);
+    console.log(`   Actual days needed: ${actualDays}`);
+
+    const sampleSize = Math.min(total_days, 20);
+    const dayInterval = Math.max(1, Math.floor(total_days / sampleSize));
+
+    console.log(`   Analyzing ${sampleSize} sample days to detect topics...`);
+
+    const sampleDays = [];
+    for (let day = 1; day <= total_days; day += dayInterval) {
+      const offset = (day - 1) * calculatedChunksPerDay;
+      const dayChunks = allChunks.slice(offset, offset + calculatedChunksPerDay);
+      
+      if (dayChunks.length > 0) {
+        const dayContent = dayChunks.map(c => c.text).join('\n').substring(0, 1500);
+        sampleDays.push({
+          day: day,
+          offset: offset,
+          content: dayContent
+        });
+      }
+    }
+
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const planPrompt = `Analyze this ${subject} textbook for Class ${class_no} (${board} Board) and generate topic names for a ${total_days}-day study plan.
+
+BOOK: ${bookInfo.file_name}
+TOTAL CHUNKS: ${totalChunks}
+CHUNKS PER DAY: ${calculatedChunksPerDay}
+
+I'm providing sample content from different days throughout the study plan:
+
+${sampleDays.map(d => `DAY ${d.day} (starting at chunk ${d.offset}):\n${d.content}\n`).join('\n---\n')}
+
+TASK:
+Based on these samples, extrapolate and generate topic names for ALL ${total_days} days.
+The topics should:
+1. Flow logically through the curriculum
+2. Be specific and clear (3-8 words each)
+3. Follow the content progression shown in samples
+4. Cover the entire book evenly
+
+Return ONLY valid JSON:
+{
+  "study_plan": [
+    {"day": 1, "topic": "Introduction to Plant Biology", "estimated_chunks": ${calculatedChunksPerDay}},
+    {"day": 2, "topic": "Cell Structure and Organelles", "estimated_chunks": ${calculatedChunksPerDay}},
+    ...
+    {"day": ${total_days}, "topic": "Review and Practice", "estimated_chunks": ${calculatedChunksPerDay}}
+  ]
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert curriculum planner. Generate logical topic progressions for study plans. Return only valid JSON."
+        },
+        { role: "user", content: planPrompt }
+      ],
+      max_tokens: 4000,
+      temperature: 0.3,
+    });
+
+    const planData = cleanJsonFromMarkdown(completion.choices[0].message.content);
+    const studyPlan = JSON.parse(planData);
+
+    console.log(`   ✓ Generated topics for ${studyPlan.study_plan.length} days`);
+
+    const enrichedPlan = studyPlan.study_plan.map((dayPlan, index) => {
+      const offset = index * calculatedChunksPerDay;
+      const limit = Math.min(calculatedChunksPerDay, totalChunks - offset);
+      
+      return {
+        day: dayPlan.day,
+        topic: dayPlan.topic,
+        chunk_range: {
+          offset: offset,
+          limit: limit,
+          start_chunk: offset,
+          end_chunk: offset + limit - 1
+        },
+        lecture_generated: false
+      };
+    });
+
+    console.log(`   ✓ Study plan generated (not stored in DB)`);
+
+    res.json({
+      success: true,
+      data: {
+        book_id: bookId,
+        book_name: bookInfo.file_name,
+        total_chunks: totalChunks,
+        study_plan: {
+          total_days: enrichedPlan.length,
+          chunks_per_day: calculatedChunksPerDay,
+          days: enrichedPlan
+        },
+        metadata: {
+          subject: subject,
+          class_no: class_no,
+          board: board,
+          created_at: new Date().toISOString(),
+          notes: "Use chunk_range.offset and chunk_range.limit when calling /lecture/generate"
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Study plan generation error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "PLAN_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * GET /api/v1/books/:bookId/study-plan
+ * Retrieve existing study plan for a book
+ * Note: Study plans are NOT stored in DB. This endpoint is deprecated.
+ * Use POST /books/:bookId/generate-study-plan to create a new plan.
+ */
+app.get("/api/v1/books/:bookId/study-plan", async (req, res) => {
+  return res.status(404).json({
+    success: false,
+    error: { 
+      code: "ENDPOINT_DEPRECATED", 
+      message: "Study plans are not stored. Use POST /books/:bookId/generate-study-plan to generate a new plan." 
+    }
+  });
+});
+
+/**
+ * POST /api/v1/books/:bookId/extract-chapters
+ * Extract chapters/topics from a book automatically
+ */
+app.post("/api/v1/books/:bookId/extract-chapters", async (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const { 
+      subject,
+      class_no,
+      board,
+      model = "gpt-4o-mini" 
+    } = req.body;
+
+    if (!subject || !class_no || !board) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_METADATA", message: "subject, class_no, and board are required" }
+      });
+    }
+
+    console.log(`\n📚 Extracting chapters from book: ${bookId}`);
+
+    const bookInfo = await getBookInfo(bookId);
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "BOOK_NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    const allChunks = await getBookChunks(bookId);
+    const totalChunks = allChunks.length;
+
+    const sampleSize = Math.min(50, totalChunks);
+    const interval = Math.floor(totalChunks / sampleSize);
+    const sampleChunks = [];
+    
+    for (let i = 0; i < totalChunks; i += interval) {
+      sampleChunks.push({
+        index: i,
+        text: allChunks[i].text
+      });
+    }
+
+    const sampleText = sampleChunks.map((chunk, idx) => 
+      `[Chunk ${chunk.index}]: ${chunk.text.substring(0, 300)}`
+    ).join('\n\n');
+
+    console.log(`   Analyzing ${sampleSize} sample chunks...`);
+
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const extractionPrompt = `Analyze this textbook and extract the chapter structure.
+
+BOOK: ${bookInfo.file_name}
+SUBJECT: ${subject}
+CLASS: ${class_no}
+BOARD: ${board}
+TOTAL CHUNKS: ${totalChunks}
+
+SAMPLE CONTENT (showing chunk indices):
+${sampleText}
+
+TASK:
+1. Identify major chapters in this book
+2. Estimate which chunk ranges belong to each chapter
+3. Provide a clear chapter structure
+
+Return ONLY valid JSON in this format:
+{
+  "book_structure": {
+    "total_chapters": 10,
+    "chapters": [
+      {
+        "chapter_number": 1,
+        "chapter_name": "Introduction to Photosynthesis",
+        "estimated_start_chunk": 0,
+        "estimated_end_chunk": 50,
+        "chunk_count": 50
+      }
+    ]
+  }
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        { 
+          role: "system", 
+          content: "You are an expert at analyzing educational textbooks and identifying chapter structures. Return JSON only." 
+        },
+        { role: "user", content: extractionPrompt }
+      ],
+      max_tokens: 2000,
+      temperature: 0.3,
+    });
+
+    const extractedStructure = cleanJsonFromMarkdown(completion.choices[0].message.content);
+    const bookStructure = JSON.parse(extractedStructure);
+
+    console.log(`   ✓ Extracted ${bookStructure.book_structure.total_chapters} chapters (not stored in DB)`);
+
+    res.json({
+      success: true,
+      data: {
+        book_id: bookId,
+        book_name: bookInfo.file_name,
+        total_chunks: totalChunks,
+        structure: bookStructure.book_structure,
+        metadata: {
+          subject: subject,
+          class_no: class_no,
+          board: board,
+          extraction_method: 'ai_analysis',
+          sample_chunks_analyzed: sampleSize,
+          created_at: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Chapter extraction error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "EXTRACTION_ERROR", message: err.message }
+    });
+  }
+});
+
+/**
+ * GET /api/v1/books/:bookId/chapters
+ * Get all chapters/topics for a book
+ * Note: Chapter structures are NOT stored. This endpoint is deprecated.
+ * Use POST /books/:bookId/extract-chapters to generate chapter structure.
+ */
+app.get("/api/v1/books/:bookId/chapters", async (req, res) => {
+  return res.status(404).json({
+    success: false,
+    error: { 
+      code: "ENDPOINT_DEPRECATED", 
+      message: "Chapter structures are not stored. Use POST /books/:bookId/extract-chapters to generate chapter structure." 
+    }
+  });
+});
+
+/**
+ * POST /api/v1/lecture/generate-by-topic
+ * Generate lecture for specific chunks with auto-detected chapter and topics
+ */
+app.post("/api/v1/lecture/generate-by-topic", async (req, res) => {
+  try {
+    const {
+      book_id,
+      chunk_limit = 10,
+      chunk_offset = 0,
+      class_no,
+      board,
+      subject,
+      include_full_chapter = false, // If true, tries to analyze broader context
+      model = "gpt-4o-mini",
+      max_tokens = 3000,
+      include_visuals = true
+    } = req.body;
+
+    if (!book_id || !class_no || !board || !subject) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "MISSING_FIELDS", message: "book_id, class_no, board, and subject are required" }
+      });
+    }
+
+    console.log(`\n📖 Topic-based Lecture Generation:`);
+    console.log(`   Book ID: ${book_id}`);
+    console.log(`   Chunks: ${chunk_limit} (offset: ${chunk_offset})`);
+    console.log(`   Full Chapter Mode: ${include_full_chapter}`);
+
+    const bookInfo = await getBookInfo(book_id);
+    if (!bookInfo) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "BOOK_NOT_FOUND", message: "Book not found" }
+      });
+    }
+
+    const allChunks = await getBookChunks(book_id);
+    const totalChunks = allChunks.length;
+    
+    const startIndex = chunk_offset;
+    const endIndex = Math.min(startIndex + chunk_limit, totalChunks);
+    const selectedChunks = allChunks.slice(startIndex, endIndex);
+
+    if (selectedChunks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "INVALID_PAGINATION", message: "No chunks found for given offset and limit" }
+      });
+    }
+
+    const contentText = selectedChunks.map((chunk, index) => {
+      const actualIndex = startIndex + index + 1;
+      return `Section ${actualIndex}:\n${chunk.text}`;
+    }).join('\n\n');
+
+    // Auto-detect chapter and topics from content
+    console.log(`   Auto-detecting chapter and topics...`);
+    
+    const OpenAI = await import('openai').then(module => module.default);
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const analysisPrompt = `Analyze this educational content and identify the chapter/main topic it belongs to.
+
+SUBJECT: ${subject}
+CLASS: ${class_no}
+BOARD: ${board}
+
+CONTENT:
+${contentText.substring(0, 3000)}
+
+Return ONLY valid JSON in this format:
+{
+  "chapter_name": "Main chapter name (e.g., Photosynthesis)",
+  "is_complete_chapter": ${include_full_chapter},
+  "content_type": "full_chapter" or "chapter_section"
+}`;
+
+    const analysisCompletion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        { role: "system", content: "You are an expert at analyzing educational content. Return only valid JSON." },
+        { role: "user", content: analysisPrompt }
+      ],
+      max_tokens: 200,
+      temperature: 0.3,
+    });
+
+    const analysisData = cleanJsonFromMarkdown(analysisCompletion.choices[0].message.content);
+    const contentAnalysis = JSON.parse(analysisData);
+
+    console.log(`   ✓ Detected chapter: ${contentAnalysis.chapter_name}`);
+    console.log(`   ✓ Content type: ${contentAnalysis.content_type}`);
+
+    // Generate lecture based on analyzed content
+    const lecturePrompt = `Create a comprehensive lecture for this chapter content.
+
+CHAPTER: ${contentAnalysis.chapter_name}
+SUBJECT: ${subject} (Class ${class_no}, ${board} Board)
+
+CONTENT:
+${contentText}
+
+REQUIREMENTS:
+1. ${contentAnalysis.is_complete_chapter ? 'Cover the complete chapter comprehensively' : 'Focus on the chapter content provided'}
+2. Use clear HTML structure with <section> tags
+3. Include learning objectives for this chapter
+4. Add chapter summary at the end
+5. Include practice questions related to chapter content
+6. Make it appropriate for ${board} board Class ${class_no} students
+
+${include_visuals ? `VISUAL ELEMENTS: Use {{IMAGE: description}}, {{DIAGRAM: description}}, {{CHART: description}} format when helpful` : ''}
+
+Generate a complete, engaging lecture.`;
+
+    const startTime = Date.now();
+    const completion = await openai.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert ${subject} educator creating topic-focused lectures for ${board} board.`
+        },
+        { role: "user", content: lecturePrompt }
+      ],
+      max_tokens: max_tokens,
+      temperature: 0.4,
+    });
+
+    const responseTime = Date.now() - startTime;
+    const lectureContent = completion.choices[0].message.content;
+    const tokensUsed = completion.usage;
+
+    console.log(`   ✓ Lecture generated (${responseTime}ms, ${tokensUsed.total_tokens} tokens)`);
+
+    const processedResult = await processVisualElements(lectureContent, subject, class_no, include_visuals);
+
+    res.json({
+      success: true,
+      data: {
+        lecture_content: processedResult.content,
+        visual_assets: processedResult.visual_assets,
+        content_analysis: {
+          chapter_name: contentAnalysis.chapter_name,
+          content_type: contentAnalysis.content_type,
+          is_complete_chapter: contentAnalysis.is_complete_chapter
+        },
+        chunk_info: {
+          chunk_offset: chunk_offset,
+          chunk_limit: chunk_limit,
+          chunks_used: selectedChunks.length,
+          total_chunks_in_book: totalChunks
+        },
+        metadata: {
+          book_id: book_id,
+          book_title: bookInfo.title || bookInfo.file_name,
+          class_no: class_no,
+          board: board,
+          subject: subject,
+          lecture_type: contentAnalysis.is_complete_chapter ? 'full_chapter' : 'chapter_section',
+          tokens_used: tokensUsed,
+          response_time_ms: responseTime,
+          created_at: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Topic lecture error:", err);
+    res.status(500).json({
+      success: false,
+      error: { code: "LECTURE_ERROR", message: err.message }
     });
   }
 });

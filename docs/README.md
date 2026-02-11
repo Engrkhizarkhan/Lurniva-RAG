@@ -2,7 +2,15 @@
 
 Welcome to the Lurniva RAG system documentation. This directory contains comprehensive documentation for developers, users, and administrators.
 
+> **🚨 RECENT UPDATES (Feb 12, 2026):**  
+> Major API changes! Vector DB now stores **only book data**. Study plans and chapter structures are generated on-demand.  
+> **→ See [API_UPDATE_CHANGELOG.md](API_UPDATE_CHANGELOG.md) for migration guide**
+
 ## 📚 Documentation Structure
+
+### ⚡ Recent Changes & Updates
+- **[API Update Changelog](API_UPDATE_CHANGELOG.md)** - ⭐ **READ THIS FIRST** - Breaking changes, deprecated endpoints, migration guide
+- **[Frontend Update Guide](../FRONTEND_UPDATE.md)** - Frontend console changes and testing instructions
 
 ### Core Documentation
 - [Product Requirements Document (PRD)](PRD.md) - Product vision, features, and requirements
@@ -10,13 +18,12 @@ Welcome to the Lurniva RAG system documentation. This directory contains compreh
 - [Getting Started](getting-started.md) - Quick setup and installation guide
 
 ### API Documentation
-- [API Reference](api/README.md) - Complete API documentation
+- [API Reference](api/README.md) - Complete API documentation (20 active endpoints)
 - [API Examples](api/examples.md) - Code examples and use cases
 - [Authentication](api/authentication.md) - API security and auth guide
 
 ### User Guides
 - [User Guide](user-guide/README.md) - Complete user manual
-- [Admin Guide](user-guide/admin-guide.md) - Administrative functions
 - [Troubleshooting](user-guide/troubleshooting.md) - Common issues and solutions
 
 ### Development
@@ -35,12 +42,15 @@ Welcome to the Lurniva RAG system documentation. This directory contains compreh
 
 | I want to... | Go to... |
 |--------------|----------|
+| **See what changed in latest update** | **[API_UPDATE_CHANGELOG.md](API_UPDATE_CHANGELOG.md)** ⭐ |
+| **Migrate from old endpoints** | **[API_UPDATE_CHANGELOG.md](API_UPDATE_CHANGELOG.md#-migration-guide)** |
 | Understand the product | [PRD.md](PRD.md) |
 | Set up the system | [getting-started.md](getting-started.md) |
 | Use the API | [api/README.md](api/README.md) |
 | Deploy to production | [deployment/README.md](deployment/README.md) |
 | Contribute code | [development/contributing.md](development/contributing.md) |
-| Report a bug | [user-guide/troubleshooting.md](user-guide/troubleshooting.md) |
+| Report a bug or get help | [user-guide/troubleshooting.md](user-guide/troubleshooting.md) |
+| Test new endpoints | `http://localhost:3000/console` |
 
 ## 📝 Documentation Standards
 
