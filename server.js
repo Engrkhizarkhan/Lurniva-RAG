@@ -3556,7 +3556,7 @@ app.post("/api/v1/lecture/generate", async (req, res) => {
       chunk_limit = 10,
       chunk_offset = 0,
       model = "gpt-4o-mini",
-      max_tokens = 3000,
+      max_tokens = 8000,
       include_visuals = true,
       lecture_style = "comprehensive" // comprehensive, concise, interactive
     } = req.body;
@@ -3639,20 +3639,30 @@ app.post("/api/v1/lecture/generate", async (req, res) => {
     }
 
     // Step 4: Create comprehensive lecture prompt
-    const lecturePrompt = `You are an expert educator creating a comprehensive lecture for ${subject} (Class ${class_no}, ${board} Board).
+    const lecturePrompt = `You are an expert educator creating a COMPREHENSIVE, DETAILED lecture for ${subject} (Class ${class_no}, ${board} Board).
 
-TASK: Generate a complete, engaging lecture based on the provided textbook content.
+TASK: Generate a complete, thorough, and engaging lecture based on the provided textbook content.
 
 CONTENT TO COVER:
 ${contentText}
 
 REQUIREMENTS:
-1. Create a structured lecture with clear sections and subsections
-2. Use appropriate HTML formatting (h1, h2, h3, p, ul, ol, li, strong, em, blockquote) make it like <section> and inside it the h1 and etc
-3. Add educational elements: definitions, examples, key points, summaries
-4. Make it engaging and age-appropriate for Class ${class_no} students
-5. Follow ${board} curriculum standards
-6. Provide clear explanations with real-world applications
+1. Create a well-structured lecture with clear sections and multiple subsections
+2. Use appropriate HTML formatting (h1, h2, h3, p, ul, ol, li, strong, em, blockquote) within <section> tags
+3. Provide EXTENSIVE educational content:
+   - Thorough definitions for all key terms
+   - Multiple detailed examples for each major concept (minimum 2-3 per topic)
+   - Step-by-step explanations for complex topics
+   - Real-world applications and scenarios
+   - Analogies to aid understanding
+4. Make it highly engaging and age-appropriate for Class ${class_no} students
+5. Strictly follow ${board} curriculum standards
+6. Include detailed "Key Points to Remember" sections throughout
+7. Add comparison tables where relevant
+8. Provide background context and historical perspective when applicable
+9. Include highlighted boxes for important formulas, principles, or definitions
+10. Add comprehensive subsections with in-depth explanations
+11. Ensure minimum 3000+ words of educational content
 
 ${include_visuals ? `
 VISUAL ELEMENTS TO INCLUDE:
@@ -3665,16 +3675,17 @@ Example: {{IMAGE: A detailed cross-section diagram of a plant cell showing chlor
 ` : ''}
 
 LECTURE STRUCTURE:
-1. Introduction & Learning Objectives
-2. Main Content (organized by topics/subtopics)
-3. Key Concepts & Definitions
-4. Examples & Applications
-5. Summary & Conclusion
-6. Review Questions
+1. Introduction & Detailed Learning Objectives (minimum 5 objectives)
+2. Main Content (organized by topics/subtopics with extensive explanations)
+3. Key Concepts & Comprehensive Definitions
+4. Multiple Examples & Practical Applications
+5. Real-World Case Studies or Scenarios
+6. Detailed Summary & Conclusion covering all major points
+7. 10-15 Review Questions of varying difficulty levels
 
-${detectedTopic ? `FOCUS TOPIC: "${detectedTopic}" - Ensure this topic gets special emphasis in the lecture.` : ''}
+${detectedTopic ? `FOCUS TOPIC: "${detectedTopic}" - Ensure this topic gets special emphasis with extra detail and examples.` : ''}
 
-STYLE: ${lecture_style === 'comprehensive' ? 'Detailed explanations with examples' : 
+STYLE: ${lecture_style === 'comprehensive' ? 'EXTREMELY detailed explanations with multiple examples, thorough coverage, and rich educational content' : 
          lecture_style === 'concise' ? 'Concise but complete coverage' : 
          lecture_style === 'visual' ? 'Rich visual content with clear explanations' :
          'Practical examples with real-world applications'}
@@ -3696,7 +3707,7 @@ Generate ONLY the HTML lecture content. No markdown, no code blocks, just clean 
       messages: [
         {
           role: "system",
-          content: `You are an expert educator specializing in ${subject} for ${board} board. Create engaging, curriculum-aligned lectures in HTML format only. Always include visual placeholders to enhance learning.`
+          content: `You are an expert educator specializing in ${subject} for ${board} board. Create engaging, curriculum-aligned lectures in HTML format only. Your lectures are known for being thorough, comprehensive, and packed with detailed explanations, examples, and practical applications. Always provide extensive content that fully explores each concept. Always include visual placeholders to enhance learning.`
         },
         {
           role: "user",
@@ -4140,7 +4151,7 @@ app.post("/api/v1/lecture/generate-by-topic", async (req, res) => {
       subject,
       include_full_chapter = false, // If true, tries to analyze broader context
       model = "gpt-4o-mini",
-      max_tokens = 3000,
+      max_tokens = 8000,
       include_visuals = true
     } = req.body;
 
@@ -4224,7 +4235,7 @@ Return ONLY valid JSON in this format:
     console.log(`   ✓ Content type: ${contentAnalysis.content_type}`);
 
     // Generate lecture based on analyzed content
-    const lecturePrompt = `Create a comprehensive lecture for this chapter content.
+    const lecturePrompt = `Create a COMPREHENSIVE, DETAILED lecture for this chapter content.
 
 CHAPTER: ${contentAnalysis.chapter_name}
 SUBJECT: ${subject} (Class ${class_no}, ${board} Board)
@@ -4233,16 +4244,29 @@ CONTENT:
 ${contentText}
 
 REQUIREMENTS:
-1. ${contentAnalysis.is_complete_chapter ? 'Cover the complete chapter comprehensively' : 'Focus on the chapter content provided'}
-2. Use clear HTML structure with <section> tags
-3. Include learning objectives for this chapter
-4. Add chapter summary at the end
-5. Include practice questions related to chapter content
-6. Make it appropriate for ${board} board Class ${class_no} students
+1. ${contentAnalysis.is_complete_chapter ? 'Cover the complete chapter comprehensively with extensive detail' : 'Provide in-depth coverage of the chapter content'}
+2. Use clear HTML structure with <section> tags and proper headings hierarchy
+3. Include detailed learning objectives at the beginning (minimum 5 objectives)
+4. Provide EXTENSIVE explanations for each concept:
+   - Define key terms thoroughly
+   - Explain concepts in multiple ways (analogies, examples, real-world applications)
+   - Include step-by-step breakdowns for complex topics
+   - Add background context and historical perspective where relevant
+5. Include MULTIPLE examples for each major concept (at least 2-3 examples per topic)
+6. Add detailed subsections with clear explanations
+7. Use bullet points, numbered lists, and structured formatting for clarity
+8. Include "Key Points to Remember" sections throughout
+9. Add comparison tables where applicable to show differences/similarities
+10. Provide real-world applications and practical scenarios
+11. Include important formulas, definitions, or principles in highlighted boxes
+12. Add comprehensive chapter summary covering all major points
+13. Include 10-15 practice questions of varying difficulty levels
+14. Make it appropriate for ${board} board Class ${class_no} students
+15. Ensure the lecture is thorough, educational, and engaging - aim for 3000+ words
 
-${include_visuals ? `VISUAL ELEMENTS: Use {{IMAGE: description}}, {{DIAGRAM: description}}, {{CHART: description}} format when helpful` : ''}
+${include_visuals ? `VISUAL ELEMENTS: Use {{IMAGE: description}}, {{DIAGRAM: description}}, {{CHART: description}} format when helpful to illustrate concepts` : ''}
 
-Generate a complete, engaging lecture.`;
+IMPORTANT: Generate an EXTENSIVE, DETAILED lecture that thoroughly covers all aspects of the content. Do not summarize - expand and elaborate on every concept with rich explanations, examples, and educational content.`;
 
     const startTime = Date.now();
     const completion = await openai.chat.completions.create({
@@ -4250,7 +4274,7 @@ Generate a complete, engaging lecture.`;
       messages: [
         {
           role: "system",
-          content: `You are an expert ${subject} educator creating topic-focused lectures for ${board} board.`
+          content: `You are an expert ${subject} educator creating comprehensive, detailed lectures for ${board} board. Your lectures are known for being thorough, well-explained, and packed with examples and practical applications. Always provide extensive content that fully explores each concept.`
         },
         { role: "user", content: lecturePrompt }
       ],
