@@ -370,7 +370,21 @@ async function searchVectors(queryVector, limit = 5, bookId = null) {
       };
     }
     
-    return await qdrant.search(COLLECTION_NAME, searchParams);
+    if (typeof qdrant.search === "function") {
+      return await qdrant.search(COLLECTION_NAME, searchParams);
+    }
+
+    if (typeof qdrant.query === "function") {
+      const queryResult = await qdrant.query(COLLECTION_NAME, {
+        query: queryVector,
+        limit,
+        with_payload: true,
+        ...(bookId ? { filter: searchParams.filter } : {})
+      });
+      return queryResult.points || queryResult.result || queryResult;
+    }
+
+    throw new Error("Qdrant client does not support vector search");
   } else {
     let results = inMemoryVectorStore;
     

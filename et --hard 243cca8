@@ -1,0 +1,23 @@
+[33m9af89d8[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Add OpenAI response validation and error handling utilities
+[33m243cca8[m Add user guide and troubleshooting documentation for Lurniva RAG system
+[33mf02c265[m tutorHighlighted
+[33madbeb7d[m doc/s updated
+[33m574ff7c[m Merge branch 'main' of https://github.com/Engrkhizarkhan/Lurniva-RAG
+[33m6268a45[m student_submission_file
+[33m337a79c[m feat: Implement Remedial Learning API for failed quiz recovery, including personalized lecture generation and follow-up quiz creation
+[33m0061f04[m feat: Update assignment generation to include essay prompts and detailed evaluation criteria
+[33m3a79407[m feat: Add assignment document upload and grading functionality
+[33mdd91abd[m ai assignments and guiz added
+[33m1e9f4f9[m Merge branch 'main' of https://github.com/Engrkhizarkhan/Lurniva-RAG
+[33m0d46c9d[m fix: Improve HTML formatting instructions for structured lecture requirements
+[33m3227106[m Merge branch 'main' of https://github.com/Engrkhizarkhan/Lurniva-RAG
+[33m1ef3138[m updated docs to support easy understanding structure
+[33mdaaddd5[m prompt v1.1
+[33m0d49498[m .. doc
+[33md90dacf[m feat: Add lecture generation API and frontend integration for educational content
+[33me4d76e5[m html to json res
+[33mda8fe0e[m Ai tutor add
+[33m1ebb0e9[m on prod
+[33me373899[m feat: Implement authentication with login/logout functionality and session management
+[33me6c1b05[m feat: Add comprehensive API test page and scripts for Lurniva RAG microservice
+[33m0009498[m Initial
